@@ -79,10 +79,10 @@ $agora = date('Y-m-d H:i:s');
 
 // conexão PDO (ajuste host/db/user/senha)
 $pdo = new PDO(
-    'mysql:host=localhost;dbname=corretor_saeb;charset=utf8mb4',
-    'root',
-    'Clarinha1408',
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        'mysql:host=localhost;port=23306;dbname=corretor_saeb;charset=utf8mb4',
+        'root',
+        'root',
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
 );
 
 // upsert do lote

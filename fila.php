@@ -3,9 +3,9 @@ ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 $pdo = new PDO(
-        'mysql:host=localhost;dbname=corretor_saeb;charset=utf8mb4',
+        'mysql:host=localhost:23306;dbname=corretor_saeb;charset=utf8mb4',
         'root',
-        'Clarinha1408',
+        'root',
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
 );
 

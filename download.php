@@ -4,7 +4,7 @@ error_reporting(E_ALL);
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Aws\S3\S3Client;
+use     Aws\S3\S3Client;
 use Aws\Exception\AwsException;
 
 // 1. Lote recebido
@@ -18,9 +18,9 @@ if (!$loteId) {
 // 2. Busca prefixo no banco
 try {
     $pdo = new PDO(
-        'mysql:host=localhost;dbname=corretor_saeb;charset=utf8mb4',
+        'mysql:host=localhost:23306;dbname=corretor_saeb;charset=utf8mb4',
         'root',
-        'Clarinha1408',
+        'root',
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
