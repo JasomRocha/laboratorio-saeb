@@ -1,0 +1,19 @@
+{
+    "name": "jasom/corretor-saeb",
+    "autoload": {
+        "psr-4": {
+            "Jasom\\CorretorSaeb\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Jasom Rocha",
+            "email": "36940932+JasomRocha@users.noreply.github.com"
+        }
+    ],
+    "require": {
+        "aws/aws-sdk-php": "^3.337",
+        "ext-fileinfo": "*",
+        "php-amqplib/php-amqplib": "^3.7"
+    }
+}
