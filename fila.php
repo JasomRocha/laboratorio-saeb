@@ -81,14 +81,9 @@ $lotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="three wide column">
                 <nav class="ui vertical fluid tabular menu">
                     <div class="header item">ANÁLISE INSE</div>
-                    <a class="item active" href="fila.php">
-                        Fila de Análise
-                        <i class="horizontal ellipsis icon"></i>
-                    </a>
-                    <a class="item" href="index.php">
-                        Enviar para Análise
-                        <i class="upload icon"></i>
-                    </a>
+                    <a class="item active" href="fila.php">Fila de Análise<i class="horizontal ellipsis icon"></i></a>
+                    <a class="item" href="index.php">Enviar para Análise<i class="upload icon"></i></a>
+                    <a class="item" href="meus_envios.php">Meus envios<i class="folder open icon"></i></a>
                 </nav>
             </div>
 

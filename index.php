@@ -62,6 +62,11 @@
                     <a class="item active" href="index.php">
                         Enviar para Análise                        <i class="upload icon"></i>
                     </a>
+                    <!-- NOVO ITEM -->
+                    <a class="item" href="meus_envios.php">
+                        Meus envios
+                        <i class="folder open icon"></i>
+                    </a>
                 </nav>
             </div>
 

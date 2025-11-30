@@ -124,6 +124,11 @@ $paginas = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         Enviar para Análise
                         <i class="upload icon"></i>
                     </a>
+                    <!-- NOVO ITEM -->
+                    <a class="item" href="meus_envios.php">
+                        Meus envios
+                        <i class="folder open icon"></i>
+                    </a>
                 </nav>
             </div>
 
