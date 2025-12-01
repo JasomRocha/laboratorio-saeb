@@ -2,7 +2,7 @@
 use Aws\S3\S3Client;
 use Aws\Exception\AwsException;
 
-class S3Helper
+final class S3Helper
 {
     private static ?S3Client $client = null;
     private static string $bucket = 'dadoscorretor';

@@ -26,7 +26,7 @@
             <a class="blue active item" href="verFila.php">Análise INSE</a>
             <div class="right menu">
                 <div class="ui dropdown item" style="text-align:center">
-                    Conectado como<br><strong>qstione</strong>
+                    Seu perfil
                     <i class="dropdown icon"></i>
                     <div class="menu">
                         <a class="item"><i class="user icon"></i> Seus dados</a>
@@ -79,7 +79,7 @@
                                     <td><?= (int)$c['total_folhas'] ?></td>
                                     <td><?= (int)$c['primeira_pagina'] ?> - <?= (int)$c['ultima_pagina'] ?></td>
                                     <td>
-                                        <a class="ui mini primary button" href="download_caderno.php?lote_id=<?= urlencode($loteId) ?>&caderno_hash=<?= urlencode($c['caderno_hash']) ?>">
+                                        <a class="ui mini primary button" href="index.php?action=downloadCaderno&lote_id=<?= urlencode($loteId) ?>&caderno_hash=<?= urlencode($c['caderno_hash']) ?>">
                                             Baixar caderno (ZIP)
                                         </a>
                                     </td>

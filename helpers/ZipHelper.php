@@ -1,6 +1,6 @@
 <?php
 
-class ZipHelper
+final class ZipHelper
 {
     public static function processarZip(string $zipPath, string $s3Prefix): int
     {

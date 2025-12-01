@@ -3,7 +3,7 @@
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 
-class RabbitMQHelper
+final class RabbitMQHelper
 {
     private static string $host = 'localhost';
     private static int $port = 5672;

@@ -25,7 +25,7 @@
             <a class="blue active item" href="index.php?action=verFila">Análise INSE</a>
             <div class="right menu">
                 <div class="ui dropdown item" style="text-align:center">
-                    Conectado como<br><strong>qstione</strong>
+                    Seu perfil
                     <i class="dropdown icon"></i>
                     <div class="menu">
                         <a class="item"><i class="user icon"></i> Seus dados</a>
@@ -85,7 +85,7 @@
                                         <a class="ui mini button" href="index.php?action=meusCadernos&lote_id=<?= urlencode($lote['lote_id']) ?>">
                                             Cadernos
                                         </a>
-                                        <a class="ui mini basic button" href="download.php?lote_id=<?= urlencode($lote['lote_id']) ?>">
+                                        <a class="ui mini basic button" href="index.php?action=downloadLote&lote_id=<?= urlencode($lote['lote_id']) ?>">
                                             Baixar lote inteiro
                                         </a>
                                     </td>

@@ -1,6 +1,6 @@
 <?php
 
-class GhostscriptHelper
+final class GhostscriptHelper
 {
     private static string $gsPath = '"C:\\Program Files\\gs\\gs10.05.1\\bin\\gswin64c.exe"';
 

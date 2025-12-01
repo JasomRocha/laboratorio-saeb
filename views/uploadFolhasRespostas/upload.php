@@ -28,7 +28,7 @@ $maxUploadSize = ini_get('upload_max_filesize');
             <a class="blue active item" href="index.php?action=verFila">Análise INSE</a>
             <div class="right menu">
                 <div class="ui dropdown item" style="text-align:center">
-                    Conectado como<br><strong>qstione</strong>
+                    Seu perfil
                     <i class="dropdown icon"></i>
                     <div class="menu">
                         <a class="item"><i class="user icon"></i> Seus dados</a>
@@ -83,10 +83,31 @@ $maxUploadSize = ini_get('upload_max_filesize');
                             <input type="file" name="FormPacoteCorrecao_arquivo" id="FormPacoteCorrecao_arquivo" accept="<?= implode(',', $acceptMimeTypes) ?>" required>
                             <div class="muted"><small>O arquivo não pode exceder <?= $maxUploadSize ?> de tamanho.</small></div>
                         </div>
+                        <div class="<?= $model->hasErrors('coletaId') ? 'error' : '' ?> field">
+                            <label for="FormPacoteCorrecao_coletaId">Coleta</label>
+                            <select name="FormPacoteCorrecao[coletaId]" id="FormPacoteCorrecao_coletaId" class="ui dropdown" required>
+                                <option value="">Selecione uma coleta...</option>
+                                <?php if (!empty($coletas)) {
+                                    foreach ($coletas as $coleta): ?>
+                                        <option value="<?= $coleta['id'] ?>" <?= $model->coletaId === $coleta['id'] ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($coleta['codigo']) ?> - <?= htmlspecialchars($coleta['nome']) ?>
+                                        </option>
+                                    <?php endforeach;
+                                } ?>
+                            </select>
+                            <?php if ($model->hasErrors('coletaId')): ?>
+                                <div class="ui pointing red basic label">Selecione uma coleta</div>
+                            <?php endif; ?>
+                        </div>
 
                         <div class="<?= $model->hasErrors('loteId') ? 'error' : '' ?> field" id="descricaoWrapper">
-                            <label for="FormPacoteCorrecao_loteId">Descrição</label>
-                            <input type="text" name="FormPacoteCorrecao[loteId]" id="FormPacoteCorrecao_loteId" placeholder="Descrição do pacote" value="<?= htmlspecialchars($model->loteId ?? '') ?>">
+                            <label for="FormPacoteCorrecao_loteId">Nome do Lote</label>
+                            <input type="text" name="FormPacoteCorrecao[loteId]" id="FormPacoteCorrecao_loteId" placeholder="Nome do lote dentro desta coleta" value="<?= htmlspecialchars($model->loteId ?? '') ?>">
+                        </div>
+
+                        <div class="field">
+                            <label for="FormPacoteCorrecao_descricao">Descrição do lote</label>
+                            <textarea name="FormPacoteCorrecao[descricao]" id="FormPacoteCorrecao_descricao" rows="3"><?= htmlspecialchars($model->descricao ?? '') ?></textarea>
                         </div>
                     </div>
 

@@ -1,6 +1,6 @@
 <?php
 
-class UploadHelper
+final class UploadHelper
 {
     public static function processarUpload(string $tmpPath, string $originalName, string $s3Prefix): int
     {

@@ -19,14 +19,13 @@
 
     <!-- Menu Superior -->
     <header>
-        <div class="ui top fixed small menu">
+        <div class="ui top fixed large menu">
             <a class="logo header item" href="index.php">Laboratório</a>
             <a class="blue active item" href="index.php?action=fila">Análise INSE</a>
 
             <div class="right menu">
                 <div class="ui dropdown item" style="text-align: center">
-                    Conectado como<br>
-                    <strong>qstione</strong>
+                    Seu perfil
                     <i class="dropdown icon"></i>
                     <div class="menu">
                         <a class="item"><i class="user icon"></i> Seus dados</a>
@@ -161,7 +160,7 @@
                                         <a class="ui compact icon button" href="index.php?action=detalhar&lote_id=<?= urlencode($l['lote_id']) ?>">
                                             <i class="list icon"></i> Detalhar
                                         </a>
-                                        <a class="ui icon compact grey button" title="Baixar cópia do arquivo" href="index.php?action=download&lote_id=<?= urlencode($l['lote_id']) ?>">
+                                        <a class="ui icon compact grey button" title="Baixar cópia do arquivo" href="index.php?action=downloadLote&lote_id=<?= urlencode($l['lote_id']) ?>">
                                             <i class="download icon"></i>
                                         </a>
                                     <?php endif; ?>

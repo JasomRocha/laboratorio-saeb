@@ -35,7 +35,7 @@
             <a class="blue active item" href="verFila.php">Análise INSE</a>
             <div class="right menu">
                 <div class="ui dropdown item" style="text-align:center">
-                    Conectado como<br><strong>qstione</strong>
+                    Seu perfil
                     <i class="dropdown icon"></i>
                     <div class="menu">
                         <a class="item"><i class="user icon"></i> Seus dados</a>
@@ -215,20 +215,18 @@
                             <table class="ui celled table">
                                 <thead>
                                 <tr>
-                                    <th>Log</th>
-                                    <th>Tipo de folha</th>
+                                    <th>caderno</th>
                                     <th>Página</th>
-                                    <th>Data</th>
+                                    <th>Log</th>
                                 </tr>
                                 </thead>
                                 <tbody>
                                 <?php if ($paginas): ?>
                                     <?php foreach ($paginas as $p): ?>
                                         <tr>
-                                            <td><?= htmlspecialchars($p['mensagem']) ?></td>
-                                            <td><?= htmlspecialchars($p['tipo_folha']) ?></td>
+                                            <td><?= htmlspecialchars($p['caderno_hash']) ?></td>
                                             <td><?= (int)$p['pagina'] ?></td>
-                                            <td><?= date('d/m/Y H:i:s', strtotime($p['atualizado_em'])) ?></td>
+                                            <td><?= htmlspecialchars($p['mensagem']) ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php else: ?>
@@ -242,7 +240,7 @@
                             </table>
                         </div>
 
-                        <a class="ui button" href="verFila.php">
+                        <a class="ui button" href="index?action=verFila.php">
                             <i class="angle left icon"></i> Voltar para a Fila de Correção
                         </a>
                     </div>

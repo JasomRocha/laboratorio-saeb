@@ -4,6 +4,8 @@ class FormPacoteCorrecao
 {
     public ?string $loteId = null;
     public ?array $arquivo = null;
+    public ?int $coletaId = null;
+    public ?string $descricao = null;
 
     public static array $mimeTypes = [
         'application/pdf',
@@ -11,7 +13,6 @@ class FormPacoteCorrecao
         'image/jpeg',
         'image/png',
         'image/gif',
-        'image/webp',
     ];
 
     private array $errors = [];
@@ -20,27 +21,39 @@ class FormPacoteCorrecao
     {
         $this->errors = [];
 
-        // Se não for ZIP, descrição é obrigatória
-        if (empty($this->arquivo['name']) || !preg_match('/\.zip$/i', $this->arquivo['name'])) {
-            if (empty($this->loteId)) {
-                $this->errors['loteId'] = 'Descrição obrigatória para arquivos não-ZIP';
-            }
+        // Valida coleta
+        if (empty($this->coletaId)) {
+            $this->errors['coletaId'] = 'Selecione uma coleta.';
         }
 
-        if (empty($this->arquivo) || !isset($this->arquivo['tmp_name']) || $this->arquivo['error'] !== UPLOAD_ERR_OK) {
-            $this->errors['arquivo'] = 'Nenhum arquivo enviado ou erro no upload';
+        // Valida lote
+        if (empty($this->loteId)) {
+            $this->errors['loteId'] = 'Informe o nome do lote.';
+        }
+
+        // Valida arquivo
+        if (empty($this->arquivo) || !isset($this->arquivo['tmp_name'])) {
+            $this->errors['arquivo'] = 'Nenhum arquivo foi enviado.';
+        } elseif ($this->arquivo['error'] !== UPLOAD_ERR_OK) {
+            $this->errors['arquivo'] = 'Erro no upload do arquivo.';
         }
 
         return empty($this->errors);
     }
 
-    public function hasErrors(?string $field = null): bool
+    public function hasErrors(?string $attribute = null): bool
     {
-        return $field ? isset($this->errors[$field]) : !empty($this->errors);
+        if ($attribute === null) {
+            return !empty($this->errors);
+        }
+        return isset($this->errors[$attribute]);
     }
 
     public function getErrorSummary(): string
     {
+        if (empty($this->errors)) {
+            return '';
+        }
         return implode('<br>', $this->errors);
     }
 }
