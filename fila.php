@@ -232,7 +232,7 @@ $lotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.js"></script>
 <script>
     $('.ui.dropdown').dropdown();
-    setTimeout(function(){ location.reload(); }, 5000);
+    setTimeout(function(){ location.reload(); }, 50000);
 </script>
 </body>
 </html>

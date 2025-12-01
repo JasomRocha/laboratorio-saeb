@@ -7,6 +7,164 @@ require __DIR__ . '/vendor/autoload.php';
 use Aws\S3\S3Client;
 use Aws\Exception\AwsException;
 
+// ---------- FUNÇÕES AUXILIARES ----------
+
+function uploadParaS3(string $filePath, string $filename, S3Client $s3, string $bucket, string $prefix): int {
+    try {
+        $s3->putObject([
+                'Bucket'      => $bucket,
+                'Key'         => $prefix . $filename,
+                'SourceFile'  => $filePath,
+                'ContentType' => mime_content_type($filePath) ?: 'image/jpeg',
+        ]);
+        return 1;
+    } catch (AwsException $e) {
+        error_log("Erro S3 ao enviar {$filename}: " . $e->getAwsErrorMessage());
+        return 0;
+    }
+}
+
+/**
+ * Converte um PDF em várias imagens usando Ghostscript (gswin64c)
+ * e envia essas imagens para o S3. Retorna quantas imagens foram enviadas.
+ */
+function converterPdfParaImagens(string $pdfPath, string $pdfName, S3Client $s3, string $bucket, string $prefix): int {
+    $enviadas = 0;
+    $baseName = pathinfo($pdfName, PATHINFO_FILENAME);
+    $tempDir  = sys_get_temp_dir() . DIRECTORY_SEPARATOR . uniqid('pdf_', true);
+
+    if (!mkdir($tempDir, 0777, true) && !is_dir($tempDir)) {
+        throw new RuntimeException(sprintf('Diretório temporário não pôde ser criado: %s', $tempDir));
+    }
+
+    // Caminho absoluto do Ghostscript
+    $gsPath = '"C:\Program Files\gs\gs10.05.1\bin\gswin64c.exe"';
+
+    $outputPattern = $tempDir . DIRECTORY_SEPARATOR . $baseName . "_page_%03d.jpg";
+    $logFile       = $tempDir . DIRECTORY_SEPARATOR . 'gs_error.log';
+
+    $cmd = sprintf(
+            '%s -dSAFER -dBATCH -dNOPAUSE -sDEVICE=jpeg -r150 -sOutputFile="%s" "%s" 2> "%s"',
+            $gsPath,
+            $outputPattern,
+            $pdfPath,
+            $logFile
+    );
+
+    exec($cmd, $out, $ret);
+
+    if ($ret !== 0) {
+        error_log("Erro Ghostscript (ret={$ret}) ao converter {$pdfName}. Veja log em {$logFile}");
+        return 0;
+    }
+
+    $arquivos = glob($tempDir . DIRECTORY_SEPARATOR . '*.jpg');
+    if (!$arquivos) {
+        error_log("Ghostscript não gerou imagens para {$pdfName}. Verifique {$logFile}.");
+        return 0;
+    }
+
+    foreach ($arquivos as $jpgPath) {
+        $fileName = basename($jpgPath);
+        $enviadas += uploadParaS3($jpgPath, $fileName, $s3, $bucket, $prefix);
+        @unlink($jpgPath);
+    }
+
+    if (file_exists($logFile)) {
+        @unlink($logFile);
+    }
+    @rmdir($tempDir);
+
+    return $enviadas;
+}
+
+
+/**
+ * Processa um ZIP: extrai para um diretório temporário,
+ * percorre recursivamente e trata imagens e PDFs.
+ */
+function processarZip(string $zipPath, S3Client $s3, string $bucket, string $prefix): int {
+    $enviadas = 0;
+    $tempDir  = sys_get_temp_dir() . DIRECTORY_SEPARATOR . uniqid('zip_', true);
+
+    if (!mkdir($tempDir, 0777, true) && !is_dir($tempDir)) {
+        throw new RuntimeException(sprintf('Diretório temporário não pôde ser criado: %s', $tempDir));
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($zipPath) === true) {
+        $zip->extractTo($tempDir); // extrai tudo [web:20]
+        $zip->close();
+
+        $it = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($tempDir, FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($it as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+
+            $path = $file->getRealPath();
+            $name = $file->getFilename();
+            $ext  = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+            if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+                $enviadas += uploadParaS3($path, $name, $s3, $bucket, $prefix);
+            } elseif ($ext === 'pdf') {
+                $enviadas += converterPdfParaImagens($path, $name, $s3, $bucket, $prefix);
+            }
+        }
+    } else {
+        error_log("Não foi possível abrir o ZIP: {$zipPath}");
+    }
+
+    // limpar diretório temporário
+    if (is_dir($tempDir)) {
+        $files = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($tempDir, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($files as $file) {
+            $file->isDir()
+                    ? @rmdir($file->getRealPath())
+                    : @unlink($file->getRealPath());
+        }
+        @rmdir($tempDir);
+    }
+
+    return $enviadas;
+}
+
+/**
+ * Decide o que fazer com cada arquivo enviado (imagem, pdf ou zip).
+ * Retorna quantas imagens foram efetivamente enviadas ao S3.
+ */
+function processarUpload(string $tmpPath, string $originalName, S3Client $s3, string $bucket, string $prefix): int {
+    $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+    if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+        // imagem direta
+        return uploadParaS3($tmpPath, $originalName, $s3, $bucket, $prefix);
+    }
+
+    if ($ext === 'pdf') {
+        // PDF → imagens via Ghostscript
+        return converterPdfParaImagens($tmpPath, $originalName, $s3, $bucket, $prefix);
+    }
+
+    if ($ext === 'zip') {
+        // ZIP → extrai tudo, processa recursivo
+        return processarZip($tmpPath, $s3, $bucket, $prefix);
+    }
+
+    // tipos não suportados
+    error_log("Tipo de arquivo não suportado: {$originalName}");
+    return 0;
+}
+
+// ---------- LÓGICA PRINCIPAL (REQUEST) ----------
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo "Método não permitido.";
@@ -21,56 +179,49 @@ if (!$loteId) {
 }
 
 if (empty($_FILES['imagens']) || !is_array($_FILES['imagens']['name'])) {
-    echo "Nenhuma imagem enviada.";
+    echo "Nenhum arquivo enviado.";
     exit;
 }
 
 // Config S3/MinIO
-$bucket = 'dadoscorretor';
-$endpoint = 'http://localhost:9000';
+$bucket    = 'dadoscorretor';
+$endpoint  = 'http://localhost:9000';
 $accessKey = '<spaces-key>';
 $secretKey = '<spaces-secret>';
 
 $loteSafe = preg_replace('/[^a-zA-Z0-9_-]/', '_', $loteId);
-$prefix = "localhost:8026/imgs/{$loteSafe}/";
+$prefix   = "localhost:8026/imgs/{$loteSafe}/";
 
 $s3 = new S3Client([
-    'version' => 'latest',
-    'region'  => 'us-east-1',
-    'endpoint' => $endpoint,
-    'use_path_style_endpoint' => true,
-    'credentials' => [
-        'key'    => $accessKey,
-        'secret' => $secretKey,
-    ],
-    'suppress_php_deprecation_warning' => true,
+        'version'                 => 'latest',
+        'region'                  => 'us-east-1',
+        'endpoint'                => $endpoint,
+        'use_path_style_endpoint' => true,
+        'credentials'             => [
+                'key'    => $accessKey,
+                'secret' => $secretKey,
+        ],
+        'suppress_php_deprecation_warning' => true,
 ]);
 
-$total = count($_FILES['imagens']['name']);
+$totalArquivosUsuario = count($_FILES['imagens']['name']); // quantos arquivos o usuário mandou
 $enviadas = 0;
-$erros = [];
+$erros    = [];
 
-for ($i = 0; $i < $total; $i++) {
+for ($i = 0; $i < $totalArquivosUsuario; $i++) {
     if ($_FILES['imagens']['error'][$i] !== UPLOAD_ERR_OK) {
         $erros[] = $_FILES['imagens']['name'][$i] . ' (erro de upload)';
         continue;
     }
 
     $tmpName = $_FILES['imagens']['tmp_name'][$i];
-    $name = basename($_FILES['imagens']['name'][$i]);
-    $key = $prefix . $name;
+    $name    = basename($_FILES['imagens']['name'][$i]);
 
-    try {
-        $s3->putObject([
-            'Bucket' => $bucket,
-            'Key'    => $key,
-            'SourceFile' => $tmpName,
-            'ContentType' => mime_content_type($tmpName) ?: 'image/jpeg',
-        ]);
-        $enviadas++;
-    } catch (AwsException $e) {
-        $erros[] = $name . ' (erro S3: ' . $e->getAwsErrorMessage() . ')';
+    $enviadasImagem = processarUpload($tmpName, $name, $s3, $bucket, $prefix);
+    if ($enviadasImagem === 0) {
+        $erros[] = $name . ' (tipo não suportado ou erro de processamento)';
     }
+    $enviadas += $enviadasImagem;
 }
 
 // >>> A PARTIR DAQUI, FORA DO FOR <<<
@@ -96,15 +247,15 @@ $stmt = $pdo->prepare("
         atualizado_em = VALUES(atualizado_em)
 ");
 $stmt->execute([
-    ':lote_id'        => $loteId,
-    ':s3_prefix'      => $prefix,
-    ':total'          => $enviadas,
-    ':status'         => 'uploaded',
-    ':criado_em'      => $agora,
-    ':atualizado_em'  => $agora,
+        ':lote_id'       => $loteId,
+        ':s3_prefix'     => $prefix,
+    // total = quantidade de IMAGENS geradas/enviadas
+        ':total'         => $enviadas,
+        ':status'        => 'uploaded',
+        ':criado_em'     => $agora,
+        ':atualizado_em' => $agora,
 ]);
 ?>
-
 <!doctype html>
 <html lang="pt-BR">
 <head>
@@ -122,7 +273,10 @@ $stmt->execute([
 </h2>
 
 <div class="ui segment">
-    <p><strong><?= $enviadas ?></strong> arquivos enviados para S3 de <strong><?= $total ?></strong>.</p>
+    <p>
+        <strong><?= $enviadas ?></strong> imagens geradas/enviadas para o S3
+        a partir de <strong><?= $totalArquivosUsuario ?></strong> arquivo(s) enviado(s) pelo usuário.
+    </p>
 
     <?php if ($erros): ?>
         <div class="ui warning message">
@@ -135,7 +289,7 @@ $stmt->execute([
         </div>
     <?php else: ?>
         <div class="ui positive message">
-            <div class="header">Todos os arquivos foram enviados para o S3 com sucesso.</div>
+            <div class="header">Todos os arquivos foram processados e convertidos em imagens com sucesso.</div>
         </div>
     <?php endif; ?>
 </div>

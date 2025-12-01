@@ -1,111 +1,38 @@
 <?php
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
-
-$loteId = $_GET['lote_id'] ?? null;
-if (!$loteId) {
-    http_response_code(400);
-    echo "Lote inválido.";
-    exit;
-}
-
-$pdo = new PDO(
-        'mysql:host=localhost:23306;dbname=corretor_saeb;charset=utf8mb4',
-        'root',
-        'root',
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-);
-
-// Dados do lote
-$stmt = $pdo->prepare("
-    SELECT id, lote_id, s3_prefix, total_arquivos, status,
-           mensagem_erro, criado_em, atualizado_em,
-           tempo_processamento_segundos
-    FROM lotes_correcao
-    WHERE lote_id = :lote_id
-");
-$stmt->execute([':lote_id' => $loteId]);
-$lote = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$lote) {
-    echo "Lote não encontrado.";
-    exit;
-}
-
-// Tempo de processamento
-$tempoSegundos = null;
-if (isset($lote['tempo_processamento_segundos']) && $lote['tempo_processamento_segundos'] !== null) {
-    $tempoSegundos = (int)$lote['tempo_processamento_segundos'];
-} elseif (!empty($lote['criado_em']) && !empty($lote['atualizado_em'])) {
-    $inicio = strtotime($lote['criado_em']);
-    $fim    = strtotime($lote['atualizado_em']);
-    if ($inicio && $fim && $fim >= $inicio) {
-        $tempoSegundos = $fim - $inicio;
-    }
-}
-
-// Resumo do processamento (para o gráfico)
-$stmt = $pdo->prepare("
-    SELECT corrigidas, defeituosas, repetidas, total
-    FROM resumo_lote
-    WHERE lote_id = :lote_id
-");
-$stmt->execute([':lote_id' => $loteId]);
-$resumo = $stmt->fetch(PDO::FETCH_ASSOC);
-
-// Folhas defeituosas e repetidas (para o bloco Folhas Defeituosas)
-$stmt = $pdo->prepare("
-    SELECT mensagem, tipo_folha, pagina, atualizado_em, status, caminho_folha, caderno_hash
-    FROM paginas_lote
-    WHERE lote_id = :lote_id
-      AND status IN ('defeituosa', 'repetida')
-    ORDER BY pagina ASC, atualizado_em ASC
-");
-$stmt->execute([':lote_id' => $loteId]);
-$folhasProblema = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Logs por folha (tabela detalhe, todos os logs)
-$stmt = $pdo->prepare("
-    SELECT mensagem, tipo_folha, pagina, atualizado_em
-    FROM paginas_lote
-    WHERE lote_id = :lote_id
-    ORDER BY pagina ASC, atualizado_em ASC
-");
-$stmt->execute([':lote_id' => $loteId]);
-$paginas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Cadernos incompletos do lote
-$stmt = $pdo->prepare("
-    SELECT hash_caderno, numero_paginas_processadas, status
-    FROM cadernos_lote
-    WHERE lote_id = :lote_id
-      AND status = 'incompleto'
-");
-$stmt->execute([':lote_id' => $loteId]);
-$cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+/* @var $controller UploadFolhasRespostasController */
+/* @var $pacote array */
+/* @var $resumo array|false */
+/* @var $folhasProblema array */
+/* @var $paginas array */
+/* @var $cadernosIncompletos array */
+/* @var $tempoSegundos int|null */
 ?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <title>Pacote para análise INSE :: Análise Automática</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><?= htmlspecialchars($controller->pgTitulo) ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.css">
     <style>
         body { background-color: #f9f9f9; }
         #main { margin-top: 72px; padding: 2rem; }
         .muted { color: #999; font-size: 0.9em; }
-        .center-block { text-align: center; padding: 3rem 0; color: #777; }
+        .center-block {
+            text-align: center;
+            padding: 3rem 0;
+            color: #777;
+        }
     </style>
 </head>
 <body>
-<div style="min-height: 100vh; display:flex; flex-direction:column">
+<div style="min-height: 100vh; display: flex; flex-direction: column">
 
     <!-- Menu superior -->
     <header>
         <div class="ui top fixed small menu">
             <a class="logo header item" href="index.php">Laboratório</a>
-            <a class="blue active item" href="fila.php">Análise INSE</a>
+            <a class="blue active item" href="verFila.php">Análise INSE</a>
             <div class="right menu">
                 <div class="ui dropdown item" style="text-align:center">
                     Conectado como<br><strong>qstione</strong>
@@ -125,9 +52,9 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <main id="main" style="flex-grow:1">
         <h1 class="ui dividing header">
             <div class="content">
-                Pacote para análise INSE :: Análise Automática
+                <?= htmlspecialchars($controller->pgTitulo) ?>
                 <div class="sub header">
-                    Informações detalhadas do lote <strong><?= htmlspecialchars($lote['lote_id']) ?></strong>
+                    Informações detalhadas do lote <strong><?= htmlspecialchars($pacote['lote_id']) ?></strong>
                 </div>
             </div>
         </h1>
@@ -135,24 +62,10 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="ui stackable grid">
             <!-- Sidebar esquerda -->
             <div class="three wide column">
-                <nav class="ui vertical fluid tabular menu">
-                    <div class="header item">ANÁLISE INSE</div>
-                    <a class="item" href="fila.php">
-                        Fila de Análise
-                        <i class="horizontal ellipsis icon"></i>
-                    </a>
-                    <a class="item" href="index.php">
-                        Enviar para Análise
-                        <i class="upload icon"></i>
-                    </a>
-                    <a class="item" href="meus_envios.php">
-                        Meus envios
-                        <i class="folder open icon"></i>
-                    </a>
-                </nav>
+                <?php require __DIR__ . '/incl/menuLateral.php'; ?>
             </div>
 
-            <!-- Coluna central + gráfico -->
+            <!-- Coluna central -->
             <div class="thirteen wide column">
                 <div class="ui stackable grid">
                     <!-- Coluna principal -->
@@ -164,31 +77,30 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <i class="info circle icon"></i>
                                 <div class="content">Informações do Pacote</div>
                             </h4>
-
                             <table class="ui celled table">
                                 <tbody>
                                 <tr>
-                                    <td style="width:220px"><strong>Descrição do arquivo:</strong></td>
-                                    <td><?= htmlspecialchars($lote['lote_id']) ?></td>
+                                    <td style="width:220px"><strong>Descrição do arquivo</strong></td>
+                                    <td><?= htmlspecialchars($pacote['lote_id']) ?></td>
                                 </tr>
                                 <tr>
-                                    <td><strong>Carregamento:</strong></td>
+                                    <td><strong>Carregamento</strong></td>
                                     <td>
-                                        Carregado em <?= date('d/m/Y \à\s H:i:s', strtotime($lote['criado_em'])) ?>
+                                        Carregado em <?= date('d/m/Y H:i:s', strtotime($pacote['criado_em'])) ?>
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td><strong>Processamento:</strong></td>
+                                    <td><strong>Processamento</strong></td>
                                     <td>
-                                        <?php if ($lote['status'] === 'concluido'): ?>
-                                            Processamento concluído em <?= date('d/m/Y \à\s H:i:s', strtotime($lote['atualizado_em'])) ?>
+                                        <?php if ($pacote['status'] === 'concluido'): ?>
+                                            Processamento concluído em <?= date('d/m/Y H:i:s', strtotime($pacote['atualizado_em'])) ?>
                                             <?php if ($tempoSegundos !== null): ?>
-                                                <br><span class="muted">(levou <?= $tempoSegundos ?> segundos)</span>
+                                                <br><span class="muted">levou <?= $tempoSegundos ?> segundos</span>
                                             <?php endif; ?>
-                                        <?php elseif ($lote['status'] === 'em_processamento'): ?>
-                                            Em processamento desde <?= date('d/m/Y \à\s H:i:s', strtotime($lote['atualizado_em'])) ?>
-                                        <?php elseif ($lote['status'] === 'erro'): ?>
-                                            Erro no processamento em <?= date('d/m/Y \à\s H:i:s', strtotime($lote['atualizado_em'])) ?>
+                                        <?php elseif ($pacote['status'] === 'em_processamento'): ?>
+                                            Em processamento desde <?= date('d/m/Y H:i:s', strtotime($pacote['atualizado_em'])) ?>
+                                        <?php elseif ($pacote['status'] === 'erro'): ?>
+                                            Erro no processamento em <?= date('d/m/Y H:i:s', strtotime($pacote['atualizado_em'])) ?>
                                         <?php else: ?>
                                             Aguardando processamento
                                         <?php endif; ?>
@@ -200,23 +112,23 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         <!-- Folhas defeituosas -->
                         <div class="ui segment">
-                            <h4 class="ui dividing header">
-                                Folhas Defeituosas
-                            </h4>
+                            <h4 class="ui dividing header">Folhas Defeituosas</h4>
 
                             <?php
                             $temErrosPaginas = !empty($folhasProblema);
-                            if ($lote['status'] === 'concluido' && !$temErrosPaginas && empty($lote['mensagem_erro'])): ?>
+                            ?>
+
+                            <?php if ($pacote['status'] === 'concluido' && !$temErrosPaginas && empty($pacote['mensagem_erro'])): ?>
                                 <div class="center-block">
                                     <i class="huge thumbs up outline icon"></i>
                                     <h3>Tudo certo!</h3>
                                     <p>Todas as folhas deste arquivo foram processadas sem problemas.</p>
                                 </div>
-                            <?php elseif ($lote['status'] === 'erro' || $temErrosPaginas || !empty($lote['mensagem_erro'])): ?>
+                            <?php elseif ($pacote['status'] === 'erro' || $temErrosPaginas || !empty($pacote['mensagem_erro'])): ?>
                                 <div class="ui negative message">
                                     <div class="header">Ocorreram erros no processamento.</div>
-                                    <?php if (!empty($lote['mensagem_erro'])): ?>
-                                        <p><?= nl2br(htmlspecialchars($lote['mensagem_erro'])) ?></p>
+                                    <?php if (!empty($pacote['mensagem_erro'])): ?>
+                                        <p><?= nl2br(htmlspecialchars($pacote['mensagem_erro'])) ?></p>
                                     <?php endif; ?>
                                     <?php if ($resumo): ?>
                                         <p class="muted">
@@ -281,15 +193,14 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         <tbody>
                                         <?php foreach ($cadernosIncompletos as $c): ?>
                                             <tr>
-                                                <td><?= htmlspecialchars($c['hash_caderno']) ?></td>
-                                                <td><?= (int)$c['numero_paginas_processadas'] ?></td>
+                                                <td><?= htmlspecialchars($c['caderno_hash']) ?></td>
+                                                <td><?= (int)$c['total_paginas'] ?></td>
                                                 <td><?= htmlspecialchars($c['status']) ?></td>
                                             </tr>
                                         <?php endforeach; ?>
                                         </tbody>
                                     </table>
                                 <?php endif; ?>
-
                             <?php else: ?>
                                 <div class="center-block">
                                     <i class="large info circle icon"></i>
@@ -300,9 +211,7 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         <!-- Logs do pacote -->
                         <div class="ui segment">
-                            <h4 class="ui dividing header">
-                                Logs do pacote
-                            </h4>
+                            <h4 class="ui dividing header">Logs do pacote</h4>
                             <table class="ui celled table">
                                 <thead>
                                 <tr>
@@ -333,19 +242,17 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             </table>
                         </div>
 
-                        <a class="ui button" href="fila.php">
+                        <a class="ui button" href="verFila.php">
                             <i class="angle left icon"></i> Voltar para a Fila de Correção
                         </a>
                     </div>
 
-                    <!-- Coluna do gráfico -->
+                    <!-- Coluna do gráfico (lateral direita) -->
                     <div class="four wide column">
                         <div class="ui segment">
-                            <h4 class="ui dividing header">
-                                Resumo do Processamento
-                            </h4>
+                            <h4 class="ui dividing header">Resumo do Processamento</h4>
                             <div class="center-block">
-                                <canvas id="resumoChart" width="220" height="220"></canvas>
+                                anvas id="resumoChart" width="220" height="220"></canvas>
                                 <?php if ($resumo): ?>
                                     <div style="margin-top:1rem">
                                         <div class="ui label">
@@ -358,12 +265,10 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             </div>
                         </div>
                     </div>
-
-                </div> <!-- grid interna -->
+                </div><!-- grid interna -->
             </div>
         </div>
     </main>
-
 </div>
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -373,6 +278,7 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $('.ui.dropdown').dropdown();
 
     <?php if ($resumo): ?>
+    // Gráfico de rosca
     const ctx = document.getElementById('resumoChart').getContext('2d');
     new Chart(ctx, {
         type: 'doughnut',
@@ -392,7 +298,9 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
             responsive: true,
             cutout: '60%',
             plugins: {
-                legend: { position: 'top' }
+                legend: {
+                    position: 'top'
+                }
             }
         }
     });
@@ -400,3 +308,4 @@ $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 </script>
 </body>
 </html>
+
