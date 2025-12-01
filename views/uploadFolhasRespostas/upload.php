@@ -23,9 +23,9 @@ $maxUploadSize = ini_get('upload_max_filesize');
 
     <!-- Menu superior -->
     <header>
-        <div class="ui top fixed small menu">
+        <div class="ui top fixed large menu">
             <a class="logo header item" href="index.php">Laboratório</a>
-            <a class="blue active item" href="verFila.php">Análise INSE</a>
+            <a class="blue active item" href="index.php?action=verFila">Análise INSE</a>
             <div class="right menu">
                 <div class="ui dropdown item" style="text-align:center">
                     Conectado como<br><strong>qstione</strong>
@@ -56,7 +56,7 @@ $maxUploadSize = ini_get('upload_max_filesize');
             </aside>
 
             <div class="thirteen wide column">
-                <form action="upload.php" method="post" enctype="multipart/form-data" class="ui form">
+                <form action="index.php?action=upload" method="post" enctype="multipart/form-data" class="ui form">
                     <h4 class="ui top attached header">
                         Arquivo para upload
                     </h4>
@@ -105,7 +105,7 @@ $maxUploadSize = ini_get('upload_max_filesize');
 
                     <div class="ui bottom attached segment right aligned">
                         <button type="submit" class="ui primary button">Upload</button>
-                        <a href="verFila.php" class="ui basic button left floated">
+                        <a href="index.php?action=verFila" class="ui basic button left floated">
                             <i class="left double angle icon"></i> Cancelar
                         </a>
                     </div>
@@ -120,23 +120,31 @@ $maxUploadSize = ini_get('upload_max_filesize');
 <script>
     $('.ui.dropdown').dropdown();
 
-    // Esconde campo descrição quando ZIP
     $('#FormPacoteCorrecao_arquivo').on('change', function() {
         var filename = $(this).val();
         var descWrapper = $('#descricaoWrapper');
+        var inputLote = descWrapper.children('input').first();
 
         if (filename.match(/\.zip$/i)) {
-            descWrapper.children('input').first().val('');
+            try {
+                filename = filename.split(/[\\\/]/).pop();
+                var loteValue = filename.substring(0, filename.lastIndexOf('.'));
+                inputLote.val(loteValue);
+            } catch(e) {
+                inputLote.val('lote_zip_' + Date.now());
+            }
             descWrapper.addClass('hidden');
         } else {
             descWrapper.removeClass('hidden');
             try {
                 filename = filename.split(/[\\\/]/).pop();
-                descWrapper.children('input').first().val(filename.substring(0, filename.lastIndexOf('.')));
-            } catch (e) {}
-            descWrapper.children('input').first().focus();
+                inputLote.val(filename.substring(0, filename.lastIndexOf('.')));
+            } catch(e) {}
+            inputLote.focus();
         }
     });
+
+
 </script>
 </body>
 </html>

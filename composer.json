@@ -15,6 +15,7 @@
         "aws/aws-sdk-php": "^3.337",
         "ext-fileinfo": "*",
         "php-amqplib/php-amqplib": "^3.7",
-        "spatie/pdf-to-image": "^1.2"
+        "spatie/pdf-to-image": "^1.2",
+        "ext-zip": "*"
     }
 }

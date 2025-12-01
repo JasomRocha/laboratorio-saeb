@@ -2,27 +2,23 @@
 
 class GhostscriptHelper
 {
-    private static string $gsPath = 'C:\\gs\\gs10.05.1\\bin\\gswin64c.exe';
+    private static string $gsPath = '"C:\\Program Files\\gs\\gs10.05.1\\bin\\gswin64c.exe"';
 
-    /**
-     * Converte PDF em imagens JPEG e envia para S3
-     * Retorna quantidade de imagens enviadas
-     */
     public static function converterPdfParaImagens(string $pdfPath, string $pdfName, string $s3Prefix): int
     {
         $enviadas = 0;
         $baseName = pathinfo($pdfName, PATHINFO_FILENAME);
-        $tempDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . uniqid('pdf_', true);
+        $tempDir  = sys_get_temp_dir() . DIRECTORY_SEPARATOR . uniqid('pdf_', true);
 
         if (!mkdir($tempDir, 0777, true) && !is_dir($tempDir)) {
             throw new RuntimeException(sprintf('Diretório temporário não pôde ser criado: %s', $tempDir));
         }
 
         $outputPattern = $tempDir . DIRECTORY_SEPARATOR . $baseName . '_page_%03d.jpg';
-        $logFile = $tempDir . DIRECTORY_SEPARATOR . 'gs_error.log';
+        $logFile       = $tempDir . DIRECTORY_SEPARATOR . 'gs_error.log';
 
         $cmd = sprintf(
-            '"%s" -dSAFER -dBATCH -dNOPAUSE -sDEVICE=jpeg -r150 -sOutputFile="%s" "%s" 2>"%s"',
+            '%s -dSAFER -dBATCH -dNOPAUSE -sDEVICE=jpeg -r150 -sOutputFile="%s" "%s" 2> "%s"',
             self::$gsPath,
             $outputPattern,
             $pdfPath,
@@ -49,13 +45,13 @@ class GhostscriptHelper
             if (S3Helper::uploadFile($jpgPath, $s3Prefix . $fileName)) {
                 $enviadas++;
             }
-            unlink($jpgPath);
+            @unlink($jpgPath);
         }
 
         if (file_exists($logFile)) {
-            unlink($logFile);
+            @unlink($logFile);
         }
-        rmdir($tempDir);
+        self::limparDir($tempDir);
 
         return $enviadas;
     }

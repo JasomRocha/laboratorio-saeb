@@ -1,13 +1,11 @@
 <?php
 /* @var $controller UploadFolhasRespostasController */
-/* @var $pacotes array */
-/* @var $totalPacotes int */
+/* @var $lotes array */
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= htmlspecialchars($controller->pgTitulo) ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.css">
     <style>
@@ -23,10 +21,12 @@
     <header>
         <div class="ui top fixed small menu">
             <a class="logo header item" href="index.php">Laboratório</a>
-            <a class="blue active item" href="index.php?action=verFila">Análise INSE</a>
+            <a class="blue active item" href="index.php?action=fila">Análise INSE</a>
+
             <div class="right menu">
-                <div class="ui dropdown item" style="text-align:center">
-                    Conectado como<br><strong>qstione</strong>
+                <div class="ui dropdown item" style="text-align: center">
+                    Conectado como<br>
+                    <strong>qstione</strong>
                     <i class="dropdown icon"></i>
                     <div class="menu">
                         <a class="item"><i class="user icon"></i> Seus dados</a>
@@ -40,7 +40,7 @@
     </header>
 
     <!-- Conteúdo Principal -->
-    <main id="main" style="flex-grow:1">
+    <main id="main" style="flex-grow: 1">
         <h1 class="ui dividing header">
             <div class="content">
                 <?= htmlspecialchars($controller->pgTitulo) ?>
@@ -50,32 +50,23 @@
 
         <div class="ui stackable grid">
             <!-- Sidebar -->
-            <div class="three wide column">
+            <aside class="three wide column">
                 <?php require __DIR__ . '/incl/menuLateral.php'; ?>
-            </div>
+            </aside>
 
             <!-- Área principal -->
             <div class="thirteen wide column">
-                <?php if (isset($_SESSION['flash'])): ?>
-                    <?php $flash = $_SESSION['flash']; unset($_SESSION['flash']); ?>
-                    <div class="ui <?= $flash['tipo'] ?> message">
-                        <?= htmlspecialchars($flash['msg']) ?>
-                    </div>
-                <?php endif; ?>
-
-                <!-- Barra de ações -->
                 <nav class="ui menu">
                     <div class="borderless item">
-                        <strong><?= $totalPacotes ?> pacotes na listagem</strong>
+                        <strong>(<?= count($lotes) ?> pacotes na listagem)</strong>
                     </div>
                     <div class="right item">
-                        <a class="ui primary right labeled icon basic button" href="upload.php">
+                        <a class="ui primary right labeled icon basic button" href="index.php?action=upload">
                             <i class="upload icon"></i>Enviar novo pacote
                         </a>
                     </div>
                 </nav>
 
-                <!-- Tabela de Pacotes -->
                 <table class="ui selectable small striped table">
                     <thead class="full-width">
                     <tr>
@@ -84,7 +75,7 @@
                     </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($pacotes as $l): ?>
+                    <?php foreach ($lotes as $l): ?>
                         <?php
                         $status = $l['status'];
                         $rowClass = '';
@@ -109,10 +100,13 @@
                                 break;
                         }
 
-                        $totalPaginas = $l['total_paginas'] ?? $l['total_arquivos'];
-                        $corrigidas = $l['corrigidas'] ?? 0;
-                        $defeituosas = $l['defeituosas'] ?? 0;
-                        $repetidas = $l['repetidas'] ?? 0;
+                        $totalPaginas = $l['total_paginas'] !== null
+                                ? (int)$l['total_paginas']
+                                : (int)$l['total_arquivos'];
+
+                        $corrigidas  = $l['corrigidas']  !== null ? (int)$l['corrigidas']  : 0;
+                        $defeituosas = $l['defeituosas'] !== null ? (int)$l['defeituosas'] : 0;
+                        $repetidas   = $l['repetidas']   !== null ? (int)$l['repetidas']   : 0;
                         ?>
                         <tr class="<?= $rowClass ?>">
                             <td class="collapsing center aligned">
@@ -121,12 +115,13 @@
                             <td>
                                 <?= htmlspecialchars($l['lote_id']) ?><br>
                                 <span class="muted">
-                                        Carregado em <?= date('d/m/Y H:i:s', strtotime($l['criado_em'])) ?>
-                                    </span>
+                                    Carregado em <?= date('d/m/Y \à\s H:i:s', strtotime($l['criado_em'])) ?>
+                                </span>
                             </td>
                             <td>
                                 <?php if ($status === 'concluido'): ?>
-                                    <i class="check icon"></i> Concluído em <?= date('d/m/Y H:i:s', strtotime($l['atualizado_em'])) ?><br>
+                                    <i class="check icon"></i>
+                                    Concluído em <?= date('d/m/Y \à\s H:i:s', strtotime($l['atualizado_em'])) ?><br>
                                     <a class="ui green small label"><?= $corrigidas ?> corrigidas</a>
                                     <?php if ($defeituosas > 0): ?>
                                         <a class="ui red small label"><?= $defeituosas ?> defeituosas</a>
@@ -135,7 +130,8 @@
                                         <a class="ui black small label"><?= $repetidas ?> repetidas</a>
                                     <?php endif; ?>
                                 <?php elseif ($status === 'erro'): ?>
-                                    <i class="warning icon"></i> Erro em <?= date('d/m/Y H:i:s', strtotime($l['atualizado_em'])) ?><br>
+                                    <i class="warning icon"></i>
+                                    Erro em <?= date('d/m/Y \à\s H:i:s', strtotime($l['atualizado_em'])) ?><br>
                                     <a class="ui red small label"><?= $totalPaginas ?> páginas com problema</a>
                                 <?php elseif ($status === 'em_processamento'): ?>
                                     <i class="sync loading icon"></i>Processando...
@@ -148,9 +144,27 @@
                             </td>
                             <td class="right aligned">
                                 <div class="ui small buttons">
-                                    <a class="ui compact icon button" href="detalhar.php?lote_id=<?= urlencode($l['lote_id']) ?>">
-                                        <i class="list icon"></i> detalhar
-                                    </a>
+                                    <?php if ($status === 'uploaded'): ?>
+                                        <form action="index.php?action=coletar" method="post" style="display:inline">
+                                            <input type="hidden" name="lote_id" value="<?= htmlspecialchars($l['lote_id']) ?>">
+                                            <button class="ui compact primary button" type="submit">
+                                                <i class="play icon"></i> Coletar respostas
+                                            </button>
+                                        </form>
+                                    <?php else: ?>
+                                        <form action="index.php?action=recalcular" method="post" style="display:inline">
+                                            <input type="hidden" name="lote_id" value="<?= htmlspecialchars($l['lote_id']) ?>">
+                                            <button class="ui compact orange button" type="submit">
+                                                <i class="repeat icon"></i> Recalcular
+                                            </button>
+                                        </form>
+                                        <a class="ui compact icon button" href="index.php?action=detalhar&lote_id=<?= urlencode($l['lote_id']) ?>">
+                                            <i class="list icon"></i> Detalhar
+                                        </a>
+                                        <a class="ui icon compact grey button" title="Baixar cópia do arquivo" href="index.php?action=download&lote_id=<?= urlencode($l['lote_id']) ?>">
+                                            <i class="download icon"></i>
+                                        </a>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -166,12 +180,7 @@
 <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.js"></script>
 <script>
     $('.ui.dropdown').dropdown();
-
-    // Auto-refresh a cada 30s
-    setTimeout(function() {
-        location.reload();
-    }, 30000);
+    setTimeout(function(){ location.reload(); }, 50000); // Auto refresh a cada 50s
 </script>
 </body>
 </html>
-

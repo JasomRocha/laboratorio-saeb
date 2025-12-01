@@ -21,7 +21,7 @@
 
     <!-- Menu superior -->
     <header>
-        <div class="ui top fixed small menu">
+        <div class="ui top fixed large menu">
             <a class="logo header item" href="index.php">Laboratório</a>
             <a class="blue active item" href="verFila.php">Análise INSE</a>
             <div class="right menu">
@@ -79,7 +79,7 @@
                                     <td><?= (int)$c['total_folhas'] ?></td>
                                     <td><?= (int)$c['primeira_pagina'] ?> - <?= (int)$c['ultima_pagina'] ?></td>
                                     <td>
-                                        <a class="ui mini primary button" href="downloadCaderno.php?lote_id=<?= urlencode($loteId) ?>&caderno_hash=<?= urlencode($c['caderno_hash']) ?>">
+                                        <a class="ui mini primary button" href="download_caderno.php?lote_id=<?= urlencode($loteId) ?>&caderno_hash=<?= urlencode($c['caderno_hash']) ?>">
                                             Baixar caderno (ZIP)
                                         </a>
                                     </td>
@@ -93,7 +93,7 @@
                         </tbody>
                     </table>
 
-                    <a class="ui button" href="meusEnvios.php">
+                    <a class="ui button" href="index.php?action=meusEnvios">
                         <i class="angle left icon"></i> Voltar para Meus envios
                     </a>
                 </div>

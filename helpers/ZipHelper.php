@@ -2,10 +2,6 @@
 
 class ZipHelper
 {
-    /**
-     * Processa um ZIP: extrai, percorre recursivamente, envia imagens/PDFs para S3
-     * Retorna quantidade de imagens enviadas
-     */
     public static function processarZip(string $zipPath, string $s3Prefix): int
     {
         $enviadas = 0;
@@ -28,10 +24,9 @@ class ZipHelper
                 if (!$file->isFile()) {
                     continue;
                 }
-
                 $path = $file->getRealPath();
                 $name = $file->getFilename();
-                $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                $ext  = strtolower(pathinfo($name, PATHINFO_EXTENSION));
 
                 if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
                     if (S3Helper::uploadFile($path, $s3Prefix . $name)) {
@@ -45,7 +40,6 @@ class ZipHelper
             error_log("Não foi possível abrir o ZIP: {$zipPath}");
         }
 
-        // Limpar diretório temporário
         self::limparDir($tempDir);
 
         return $enviadas;

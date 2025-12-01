@@ -30,7 +30,7 @@
 
     <!-- Menu superior -->
     <header>
-        <div class="ui top fixed small menu">
+        <div class="ui top fixed large menu">
             <a class="logo header item" href="index.php">Laboratório</a>
             <a class="blue active item" href="verFila.php">Análise INSE</a>
             <div class="right menu">
@@ -252,7 +252,7 @@
                         <div class="ui segment">
                             <h4 class="ui dividing header">Resumo do Processamento</h4>
                             <div class="center-block">
-                                anvas id="resumoChart" width="220" height="220"></canvas>
+                                <canvas id="resumoChart" width="220" height="220"></canvas>
                                 <?php if ($resumo): ?>
                                     <div style="margin-top:1rem">
                                         <div class="ui label">

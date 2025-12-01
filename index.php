@@ -3,6 +3,12 @@
 // Autoload do Composer (AWS SDK, RabbitMQ, etc.)
 require_once __DIR__ . '/vendor/autoload.php';
 
+require_once __DIR__ . '/models/forms/FormPacoteCorrecao.php';
+require_once __DIR__ . '/models/LoteCorrecao.php';
+require_once __DIR__ . '/helpers/S3Helper.php';
+require_once __DIR__ . '/helpers/GhostscriptHelper.php';
+require_once __DIR__ . '/helpers/ZipHelper.php';
+require_once __DIR__ . '/helpers/RabbitMQHelper.php';
 // Controller principal da funcionalidade
 require_once __DIR__ . '/controllers/UploadFolhasRespostasController.php';
 

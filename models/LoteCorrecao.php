@@ -58,6 +58,13 @@ class LoteCorrecao
             ':atualizado_em' => $agora,
         ]);
     }
+    public static function marcarEnfileirado(string $loteId): void
+    {
+        $db = self::getDb();
+        $stmt = $db->prepare("UPDATE lotes_correcao SET status = 'enfileirado', atualizado_em = NOW() WHERE lote_id = :lote_id");
+        $stmt->execute([':lote_id' => $loteId]);
+    }
+
 
     /**
      * Lista todos os lotes com resumo

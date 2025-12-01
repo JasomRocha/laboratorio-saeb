@@ -20,9 +20,9 @@
 
     <!-- Menu superior -->
     <header>
-        <div class="ui top fixed small menu">
+        <div class="ui top fixed large menu">
             <a class="logo header item" href="index.php">Laboratório</a>
-            <a class="blue active item" href="verFila.php">Análise INSE</a>
+            <a class="blue active item" href="index.php?action=verFila">Análise INSE</a>
             <div class="right menu">
                 <div class="ui dropdown item" style="text-align:center">
                     Conectado como<br><strong>qstione</strong>
@@ -82,7 +82,7 @@
                                         <?= $lote['atualizado_em'] ? date('d/m/Y H:i:s', strtotime($lote['atualizado_em'])) : '-' ?>
                                     </td>
                                     <td>
-                                        <a class="ui mini button" href="meusCadernos.php?lote_id=<?= urlencode($lote['lote_id']) ?>">
+                                        <a class="ui mini button" href="index.php?action=meusCadernos&lote_id=<?= urlencode($lote['lote_id']) ?>">
                                             Cadernos
                                         </a>
                                         <a class="ui mini basic button" href="download.php?lote_id=<?= urlencode($lote['lote_id']) ?>">
