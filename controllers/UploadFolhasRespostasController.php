@@ -61,6 +61,7 @@ final class UploadFolhasRespostasController
             $model->coletaId = $_POST['FormPacoteCorrecao']['coletaId'] ?? null;
             $model->loteId = $_POST['FormPacoteCorrecao']['loteId'] ?? null;
             $model->arquivo = $_FILES['FormPacoteCorrecao_arquivo'] ?? null;
+            $model->descricao = $_POST['FormPacoteCorrecao']['descricao'] ?? null;
 
             if ($model->validate()) {
                 $loteSafe = preg_replace('/[^a-zA-Z0-9_-]/', '_', $model->loteId);

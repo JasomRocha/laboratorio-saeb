@@ -235,7 +235,7 @@ final class DownloadsController
             exit;
         }
 
-// 3) Configuração S3/MinIO (igual ao download.php)
+        // 3) Configuração S3/MinIO (igual ao download.php)
         $bucket    = 'dadoscorretor';
         $endpoint  = 'http://localhost:9000';
         $accessKey = '<spaces-key>';
@@ -254,7 +254,7 @@ final class DownloadsController
             'suppress_php_deprecation_warning' => true,
         ]);
 
-// 4) Cria ZIP temporário
+        // 4) Cria ZIP temporário
         $zipFilePath = tempnam(sys_get_temp_dir(), 'caderno_zip_');
         $zip = new ZipArchive();
 
@@ -270,18 +270,12 @@ final class DownloadsController
 
                 // Banco sempre guarda assim:
                 // s3://dadoscorretor/localhost:8026/imgs/Coleta_teste_2312/...
-                // Precisamos transformar em key:
-                // localhost:8026/imgs/Coleta_teste_2312/...
-
                 $prefixUri = 's3://' . $bucket . '/';
                 if (strpos($caminho, $prefixUri) === 0) {
                     $key = substr($caminho, strlen($prefixUri));
                 } else {
-                    // fallback se por algum motivo salvar sem s3://...
                     $key = $caminho;
                 }
-
-                // NÃO concatenar prefixo do lote aqui, a key já está completa
 
                 $object = $s3->getObject([
                     'Bucket' => $bucket,
@@ -328,7 +322,7 @@ final class DownloadsController
             echo 'Erro ao acessar o storage S3/MinIO: ' . htmlspecialchars($e->getMessage());
         } finally {
             if (file_exists($zipFilePath)) {
-                @unlink($zipFilePath); // @ para evitar warning de arquivo em uso no Windows
+                @unlink($zipFilePath);
             }
         }
     }
