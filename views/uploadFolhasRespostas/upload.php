@@ -16,6 +16,7 @@ $maxUploadSize = ini_get('upload_max_filesize');
         body { background-color: #f9f9f9; }
         #main { margin-top: 72px; padding: 2rem; }
         .muted { color: #999; font-size: 0.9em; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -83,13 +84,14 @@ $maxUploadSize = ini_get('upload_max_filesize');
                             <input type="file" name="FormPacoteCorrecao_arquivo" id="FormPacoteCorrecao_arquivo" accept="<?= implode(',', $acceptMimeTypes) ?>" required>
                             <div class="muted"><small>O arquivo não pode exceder <?= $maxUploadSize ?> de tamanho.</small></div>
                         </div>
+
                         <div class="<?= $model->hasErrors('coletaId') ? 'error' : '' ?> field">
                             <label for="FormPacoteCorrecao_coletaId">Coleta</label>
                             <select name="FormPacoteCorrecao[coletaId]" id="FormPacoteCorrecao_coletaId" class="ui dropdown" required>
                                 <option value="">Selecione uma coleta...</option>
                                 <?php if (!empty($coletas)) {
                                     foreach ($coletas as $coleta): ?>
-                                        <option value="<?= $coleta['id'] ?>" <?= $model->coletaId === $coleta['id'] ? 'selected' : '' ?>>
+                                        <option value="<?= $coleta['id'] ?>" <?= ($model->coletaId ?? '') === $coleta['id'] ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($coleta['codigo']) ?> - <?= htmlspecialchars($coleta['nome']) ?>
                                         </option>
                                     <?php endforeach;
@@ -100,12 +102,19 @@ $maxUploadSize = ini_get('upload_max_filesize');
                             <?php endif; ?>
                         </div>
 
-                        <div class="<?= $model->hasErrors('loteId') ? 'error' : '' ?> field" id="descricaoWrapper">
-                            <label for="FormPacoteCorrecao_loteId">Nome do Lote</label>
-                            <input type="text" name="FormPacoteCorrecao[loteId]" id="FormPacoteCorrecao_loteId" placeholder="Nome do lote dentro desta coleta" value="<?= htmlspecialchars($model->loteId ?? '') ?>">
+                        <div class="<?= $model->hasErrors('nomeLote') ? 'error' : '' ?> field" id="nomeLoteWrapper">
+                            <label for="FormPacoteCorrecao_nomeLote">Nome do Lote</label>
+                            <input type="text"
+                                   name="FormPacoteCorrecao[nomeLote]"
+                                   id="FormPacoteCorrecao_nomeLote"
+                                   placeholder="Digite um nome único para este lote (ex: lote-001)"
+                                   value="<?= htmlspecialchars($model->nomeLote ?? '') ?>"
+                                   maxlength="255"
+                                   required>
+                            <div class="muted"><small>Este nome será usado como identificador único no processamento.</small></div>
                         </div>
 
-                        <div class="field">
+                        <div class="<?= $model->hasErrors('descricao') ? 'error' : '' ?> field">
                             <label for="FormPacoteCorrecao_descricao">Descrição do lote</label>
                             <textarea name="FormPacoteCorrecao[descricao]" id="FormPacoteCorrecao_descricao" rows="3"><?= htmlspecialchars($model->descricao ?? '') ?></textarea>
                         </div>
@@ -115,7 +124,7 @@ $maxUploadSize = ini_get('upload_max_filesize');
                         <div class="ui warning small attached icon message">
                             <i class="file archive outline icon"></i>
                             <div class="content">
-                                <div class="header">Tem muitos arquivos para enviar? Experimente o zip&hellip;</div>
+                                <div class="header">Tem muitos arquivos para enviar? Experimente o zip…</div>
                                 <p>
                                     Você pode juntar todos os pacotes de correção em um arquivo zip e enviá-los de uma única vez para processamento.<br>
                                     Os arquivos zipados podem ter até <?= $maxUploadSize ?> de tamanho.
@@ -125,7 +134,9 @@ $maxUploadSize = ini_get('upload_max_filesize');
                     <?php endif; ?>
 
                     <div class="ui bottom attached segment right aligned">
-                        <button type="submit" class="ui primary button">Upload</button>
+                        <button type="submit" class="ui primary button">
+                            <i class="upload icon"></i> Upload
+                        </button>
                         <a href="index.php?action=verFila" class="ui basic button left floated">
                             <i class="left double angle icon"></i> Cancelar
                         </a>
@@ -143,29 +154,49 @@ $maxUploadSize = ini_get('upload_max_filesize');
 
     $('#FormPacoteCorrecao_arquivo').on('change', function() {
         var filename = $(this).val();
-        var descWrapper = $('#descricaoWrapper');
-        var inputLote = descWrapper.children('input').first();
+        var nomeLoteWrapper = $('#nomeLoteWrapper');
+        var inputNomeLote = $('#FormPacoteCorrecao_nomeLote');
 
-        if (filename.match(/\.zip$/i)) {
+        if (filename) {
             try {
                 filename = filename.split(/[\\\/]/).pop();
-                var loteValue = filename.substring(0, filename.lastIndexOf('.'));
-                inputLote.val(loteValue);
+                var nomeSugestao = filename.substring(0, filename.lastIndexOf('.'));
+
+                // Se zip, usa nome do arquivo como sugestão
+                if (filename.match(/\.zip$/i)) {
+                    inputNomeLote.val(nomeSugestao);
+                } else {
+                    // Para imagens soltas, sugere "lote-[timestamp]"
+                    inputNomeLote.val('lote-' + Date.now());
+                }
+
+                nomeLoteWrapper.removeClass('error').addClass('success');
             } catch(e) {
-                inputLote.val('lote_zip_' + Date.now());
+                inputNomeLote.val('lote-' + Date.now());
             }
-            descWrapper.addClass('hidden');
-        } else {
-            descWrapper.removeClass('hidden');
-            try {
-                filename = filename.split(/[\\\/]/).pop();
-                inputLote.val(filename.substring(0, filename.lastIndexOf('.')));
-            } catch(e) {}
-            inputLote.focus();
         }
+
+        inputNomeLote.focus();
     });
 
+    // Validação em tempo real do nome do lote
+    $('#FormPacoteCorrecao_nomeLote').on('input', function() {
+        var nome = $(this).val().trim();
+        var wrapper = $('#nomeLoteWrapper');
 
+        if (nome.length === 0) {
+            wrapper.removeClass('error success');
+            return;
+        }
+
+        // Regex: letras, números, hífen, underscore (sem espaços)
+        var regexValido = /^[a-zA-Z0-9_-]+$/;
+        if (regexValido.test(nome)) {
+            wrapper.removeClass('error').addClass('success');
+        } else {
+            wrapper.removeClass('success').addClass('error');
+        }
+    });
 </script>
 </body>
 </html>

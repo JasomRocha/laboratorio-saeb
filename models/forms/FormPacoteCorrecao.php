@@ -2,7 +2,7 @@
 
 class FormPacoteCorrecao
 {
-    public ?string $loteId = null;
+    public ?string $nomeLote = null;
     public ?array $arquivo = null;
     public ?int $coletaId = null;
     public ?string $descricao = null;
@@ -27,8 +27,8 @@ class FormPacoteCorrecao
         }
 
         // Valida lote
-        if (empty($this->loteId)) {
-            $this->errors['loteId'] = 'Informe o nome do lote.';
+        if (empty($this->nomeLote)) {
+            $this->errors['nomeLote'] = 'Informe o nome do lote.';
         }
 
         // Valida arquivo

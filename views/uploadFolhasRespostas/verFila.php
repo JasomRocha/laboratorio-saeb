@@ -21,7 +21,7 @@
     <header>
         <div class="ui top fixed large menu">
             <a class="logo header item" href="index.php">Laboratório</a>
-            <a class="blue active item" href="index.php?action=fila">Análise INSE</a>
+            <a class="blue active item" href="index.php?action=verFila">Análise INSE</a>
 
             <div class="right menu">
                 <div class="ui dropdown item" style="text-align: center">
@@ -112,7 +112,7 @@
                                 <i class="<?= $iconClass ?>"></i>
                             </td>
                             <td>
-                                <?= htmlspecialchars($l['lote_id']) ?><br>
+                                <?= htmlspecialchars($l['nome']) ?><br>
                                 <span class="muted">
                                     Carregado em <?= date('d/m/Y \à\s H:i:s', strtotime($l['criado_em'])) ?>
                                 </span>
@@ -145,22 +145,22 @@
                                 <div class="ui small buttons">
                                     <?php if ($status === 'uploaded'): ?>
                                         <form action="index.php?action=coletar" method="post" style="display:inline">
-                                            <input type="hidden" name="lote_id" value="<?= htmlspecialchars($l['lote_id']) ?>">
+                                            <input type="hidden" name="nome" value="<?= htmlspecialchars($l['nome']) ?>">
                                             <button class="ui compact primary button" type="submit">
                                                 <i class="play icon"></i> Coletar respostas
                                             </button>
                                         </form>
                                     <?php else: ?>
                                         <form action="index.php?action=recalcular" method="post" style="display:inline">
-                                            <input type="hidden" name="lote_id" value="<?= htmlspecialchars($l['lote_id']) ?>">
+                                            <input type="hidden" name="nome" value="<?= htmlspecialchars($l['nome']) ?>">
                                             <button class="ui compact orange button" type="submit">
                                                 <i class="repeat icon"></i> Recalcular
                                             </button>
                                         </form>
-                                        <a class="ui compact icon button" href="index.php?action=detalhar&lote_id=<?= urlencode($l['lote_id']) ?>">
+                                        <a class="ui compact icon button" href="index.php?action=detalhar&nome=<?= urlencode($l['nome']) ?>">
                                             <i class="list icon"></i> Detalhar
                                         </a>
-                                        <a class="ui icon compact grey button" title="Baixar cópia do arquivo" href="index.php?action=downloadLote&lote_id=<?= urlencode($l['lote_id']) ?>">
+                                        <a class="ui icon compact grey button" title="Baixar cópia do arquivo" href="index.php?action=downloadLote&nome=<?= urlencode($l['nome']) ?>">
                                             <i class="download icon"></i>
                                         </a>
                                     <?php endif; ?>

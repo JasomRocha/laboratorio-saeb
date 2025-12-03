@@ -64,7 +64,7 @@
                     <table class="ui celled table">
                         <thead>
                         <tr>
-                            <th>Lote</th>
+                            <th>Nome do Lote</th>
                             <th>Status</th>
                             <th>Criado em</th>
                             <th>Atualizado em</th>
@@ -75,25 +75,50 @@
                         <?php if ($lotes): ?>
                             <?php foreach ($lotes as $lote): ?>
                                 <tr>
-                                    <td><?= htmlspecialchars($lote['lote_id']) ?></td>
-                                    <td><?= htmlspecialchars($lote['status']) ?></td>
+                                    <td><?= htmlspecialchars($lote['nome']) ?></td>  <!-- ✅ nome -->
+                                    <td>
+                                        <?php
+                                        if ($lote['status'] === 'concluido') {
+                                            $statusClass = 'green';
+                                        } elseif ($lote['status'] === 'em_processamento') {
+                                            $statusClass = 'blue';
+                                        } elseif ($lote['status'] === 'erro') {
+                                            $statusClass = 'red';
+                                        } else {
+                                            $statusClass = 'grey';
+                                        }
+                                        ?>
+                                        <span class="ui <?= $statusClass ?> label">
+                                            <?= htmlspecialchars($lote['status']) ?>
+                                        </span>
+                                    </td>
                                     <td><?= date('d/m/Y H:i:s', strtotime($lote['criado_em'])) ?></td>
                                     <td>
                                         <?= $lote['atualizado_em'] ? date('d/m/Y H:i:s', strtotime($lote['atualizado_em'])) : '-' ?>
                                     </td>
                                     <td>
-                                        <a class="ui mini button" href="index.php?action=meusCadernos&lote_id=<?= urlencode($lote['lote_id']) ?>">
-                                            Cadernos
+                                        <a class="ui mini primary button" href="index.php?action=meusCadernos&lote_nome=<?= urlencode($lote['nome']) ?>">  <!-- ✅ lote_nome -->
+                                            <i class="book icon"></i> Cadernos
                                         </a>
-                                        <a class="ui mini basic button" href="index.php?action=downloadLote&lote_id=<?= urlencode($lote['lote_id']) ?>">
-                                            Baixar lote inteiro
+                                        <a class="ui mini basic button" href="index.php?action=downloadLote&lote_nome=<?= urlencode($lote['nome']) ?>">  <!-- ✅ lote_nome -->
+                                            <i class="download icon"></i> Baixar lote
                                         </a>
+                                        <?php if ($lote['status'] === 'concluido' || $lote['status'] === 'erro'): ?>
+                                            <a class="ui mini icon button" href="index.php?action=detalhar&lote_nome=<?= urlencode($lote['nome']) ?>" title="Ver detalhes">  <!-- ✅ lote_nome -->
+                                                <i class="list icon"></i>
+                                            </a>
+                                        <?php endif; ?>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="5">Nenhum lote enviado ainda.</td>
+                                <td colspan="5" class="center aligned">
+                                    <div class="ui message">
+                                        <i class="inbox icon"></i>
+                                        Nenhum lote enviado ainda.
+                                    </div>
+                                </td>
                             </tr>
                         <?php endif; ?>
                         </tbody>
@@ -111,4 +136,3 @@
 </script>
 </body>
 </html>
-

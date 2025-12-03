@@ -7,7 +7,6 @@ require_once __DIR__ . '/../helpers/ZipHelper.php';
 require_once __DIR__ . '/../helpers/RabbitMQHelper.php';
 require_once __DIR__ . '/../helpers/uploadHelper.php';
 
-
 final class UploadFolhasRespostasController
 {
     public string $pgTitulo = 'Upload de arquivos com folhas de respostas';
@@ -20,7 +19,6 @@ final class UploadFolhasRespostasController
     public function __construct()
     {
         session_start();
-        // Conexão PDO (ou usar classe DB estática)
         $this->db = new PDO(
             'mysql:host=localhost;port=23306;dbname=corretor_saeb;charset=utf8mb4',
             'root',
@@ -29,42 +27,34 @@ final class UploadFolhasRespostasController
         );
     }
 
-    /**
-     * Retorna a conexão PDO
-     */
     private function getDb(): PDO
     {
         return $this->db;
     }
-    /**
-     * Redireciona para a primeira tela apropriada
-     */
+
     public function actionIndex(): void
     {
-        // Lógica de permissão (simplificado)
         $this->redirect('verFila');
     }
 
     /**
-     * Exibe formulário de upload
+     * ✅ CORRIGIDO: Recebe nomeLote do form
      */
     public function actionUpload(): void
     {
         $this->submenuAtivo = 'novaCorrecao';
         $model = new FormPacoteCorrecao();
         $acceptMimeTypes = FormPacoteCorrecao::$mimeTypes;
-
-        // Busca todas as coletas para o dropdown
         $coletas = Coleta::listarTodas();
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $model->coletaId = $_POST['FormPacoteCorrecao']['coletaId'] ?? null;
-            $model->loteId = $_POST['FormPacoteCorrecao']['loteId'] ?? null;
+            $model->nomeLote = $_POST['FormPacoteCorrecao']['nomeLote'] ?? null;  // ✅ nomeLote
             $model->arquivo = $_FILES['FormPacoteCorrecao_arquivo'] ?? null;
             $model->descricao = $_POST['FormPacoteCorrecao']['descricao'] ?? null;
 
             if ($model->validate()) {
-                $loteSafe = preg_replace('/[^a-zA-Z0-9_-]/', '_', $model->loteId);
+                $loteSafe = preg_replace('/[^a-zA-Z0-9_-]/', '_', $model->nomeLote);
                 $prefix = "localhost:8026/imgs/{$loteSafe}/";
 
                 $totalImagens = UploadHelper::processarUpload(
@@ -82,8 +72,8 @@ final class UploadFolhasRespostasController
                 $agora = date('Y-m-d H:i:s');
 
                 $stmt = $pdo->prepare("
-                    INSERT INTO lotes_correcao (coleta_id, lote_id, descricao, s3_prefix, total_arquivos, status, criado_em, atualizado_em)
-                    VALUES (:coleta_id, :lote_id, :descricao, :s3_prefix, :total, 'uploaded', :criado_em, :atualizado_em)
+                    INSERT INTO lotes_correcao (nome, descricao, s3_prefix, total_arquivos, status, criado_em, atualizado_em)
+                    VALUES (:nome, :descricao, :s3_prefix, :total, 'uploaded', :criado_em, :atualizado_em)
                     ON DUPLICATE KEY UPDATE
                         descricao = VALUES(descricao),
                         s3_prefix = VALUES(s3_prefix),
@@ -93,12 +83,11 @@ final class UploadFolhasRespostasController
                 ");
 
                 $stmt->execute([
-                    ':coleta_id'     => $model->coletaId,
-                    ':lote_id'       => $model->loteId,
-                    ':descricao'     => $model->descricao,
-                    ':s3_prefix'     => $prefix,
-                    ':total'         => $totalImagens,
-                    ':criado_em'     => $agora,
+                    ':nome' => $model->nomeLote,          // ✅ nomeLote
+                    ':descricao' => $model->descricao,
+                    ':s3_prefix' => $prefix,
+                    ':total' => $totalImagens,
+                    ':criado_em' => $agora,
                     ':atualizado_em' => $agora,
                 ]);
 
@@ -109,141 +98,104 @@ final class UploadFolhasRespostasController
         $this->render('upload', compact('model', 'acceptMimeTypes', 'coletas'));
     }
 
-
-
-
     /**
-     * Lista todos os pacotes (fila)
+     * ✅ CORRIGIDO: JOIN com l.id (não l.nome)
      */
     public function actionVerFila(): void
     {
         $db = $this->getDb();
 
         $stmt = $db->query("
-        SELECT l.id,
-               l.lote_id,
-               l.s3_prefix,
-               l.total_arquivos,
-               l.status,
-               l.mensagem_erro,
-               l.criado_em,
-               l.atualizado_em,
-               r.corrigidas,
-               r.defeituosas,
-               r.repetidas,
-               r.total AS total_paginas
-        FROM lotes_correcao l
-        LEFT JOIN resumo_lote r ON r.lote_id = l.lote_id
-        ORDER BY l.criado_em DESC
-    ");
+            SELECT l.id, l.nome, l.descricao, l.s3_prefix, l.total_arquivos, l.status,
+                   l.mensagem_erro, l.criado_em, l.atualizado_em, l.tempo_processamento_segundos,
+                   r.corrigidas, r.defeituosas, r.repetidas, r.total AS total_paginas
+            FROM lotes_correcao l
+            LEFT JOIN resumo_lote r ON r.lote_id = l.id  -- ✅ l.id (bigint)
+            ORDER BY l.criado_em DESC
+        ");
 
         $lotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $this->submenuAtivo = 'folhasResps';
         $this->pgTitulo = 'Fila de Análise :: Análise Automática';
-        $this->pgSubtitulo = 'Permite fazer o upload de arquivos de questionários';
+        $this->pgSubtitulo = 'Permite acompanhar o processamento dos lotes';
 
         $this->render('verFila', compact('lotes'));
     }
 
-
     /**
-     * Detalha um pacote específico
+     * ✅ CORRIGIDO: Busca por nome, depois converte para ID
      */
     public function actionDetalhar(): void
     {
-        $loteId = $_GET['lote_id'] ?? null;
-        if (!$loteId) {
+        $nomeLote = $_GET['lote_nome'] ?? null;  // ✅ nome ao invés de lote_id
+        if (!$nomeLote) {
             $this->redirecionaComFlash('negative', 'Lote inválido');
+            return;
         }
 
-        $stmt = $this->db->prepare("
-            SELECT id, lote_id, s3_prefix, total_arquivos, status,
+        $db = $this->getDb();
+
+        // 1. Buscar lote por NOME
+        $stmt = $db->prepare("
+            SELECT id, nome, descricao, s3_prefix, total_arquivos, status,
                    mensagem_erro, criado_em, atualizado_em, tempo_processamento_segundos
             FROM lotes_correcao
-            WHERE lote_id = :lote_id
+            WHERE nome = :nomeLote
         ");
-        $stmt->execute([':lote_id' => $loteId]);
+        $stmt->execute([':nomeLote' => $nomeLote]);
         $pacote = $stmt->fetch(PDO::FETCH_ASSOC);
-        $tempoSegundos = $pacote['tempo_processamento_segundos'];
+
         if (!$pacote) {
-            $this->redirecionaComFlash('negative', 'Pacote não encontrado');
+            $this->redirecionaComFlash('negative', 'Lote não encontrado');
+            return;
         }
 
-        // Buscar resumo
-        $stmt = $this->db->prepare("
+        $loteIdNumerico = $pacote['id'];  // ✅ ID para tabelas filhas
+        $tempoSegundos = $pacote['tempo_processamento_segundos'];
+
+        // 2. Buscar resumo (usa ID numérico)
+        $stmt = $db->prepare("
             SELECT corrigidas, defeituosas, repetidas, total
             FROM resumo_lote
-            WHERE lote_id = :lote_id
+            WHERE lote_id = :loteId
         ");
-        $stmt->execute([':lote_id' => $loteId]);
+        $stmt->execute([':loteId' => $loteIdNumerico]);
         $resumo = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // Folhas com problema
-        $stmt = $this->db->prepare("
+        // 3. Folhas com problema (usa ID numérico)
+        $stmt = $db->prepare("
             SELECT mensagem, tipo_folha, pagina, atualizado_em, status, caminho_folha, caderno_hash
             FROM paginas_lote
-            WHERE lote_id = :lote_id AND status IN ('defeituosa', 'repetida')
+            WHERE lote_id = :loteId AND status IN ('defeituosa', 'repetida')
             ORDER BY pagina ASC
         ");
-        $stmt->execute([':lote_id' => $loteId]);
+        $stmt->execute([':loteId' => $loteIdNumerico]);
         $folhasProblema = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Logs gerais
-        $stmt = $this->db->prepare("
+        // 4. Todas as páginas
+        $stmt = $db->prepare("
             SELECT mensagem, lote_id, caderno_hash, tipo_folha, pagina, atualizado_em
             FROM paginas_lote
-            WHERE lote_id = :lote_id
+            WHERE lote_id = :loteId
             ORDER BY pagina ASC
         ");
-        $stmt->execute([':lote_id' => $loteId]);
+        $stmt->execute([':loteId' => $loteIdNumerico]);
         $paginas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Cadernos incompletos
-        $stmt = $this->db->prepare("
+        // 5. Cadernos incompletos
+        $stmt = $db->prepare("
             SELECT hash_caderno, numero_paginas_processadas AS total_paginas, status
             FROM cadernos_lote
-            WHERE lote_id = :lote_id AND status = 'incompleto'
+            WHERE lote_id = :loteId AND status = 'incompleto'
         ");
-        $stmt->execute([':lote_id' => $loteId]);
+        $stmt->execute([':loteId' => $loteIdNumerico]);
         $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $this->pgTitulo = 'Pacote #' . $pacote['id'] . ' :: Correção Automática';
+        $this->pgTitulo = 'Lote ' . $pacote['nome'] . ' :: Detalhes';
         $this->render('detalhar', compact('pacote', 'resumo', 'folhasProblema', 'paginas', 'cadernosIncompletos', 'tempoSegundos'));
     }
 
-    /**
-     * Renderiza uma view
-     */
-    private function render(string $view, array $data = []): void
-    {
-        extract($data);
-        $controller = $this;
-        require __DIR__ . "/../views/uploadFolhasRespostas/{$view}.php";
-    }
-
-    /**
-     * Redireciona com flash message
-     */
-    private function redirecionaComFlash(string $tipo, string $msg, array $action = []): void
-    {
-        $_SESSION['flash'] = ['tipo' => $tipo, 'msg' => $msg];
-        $actionStr = $action ? $action[0] : 'verFila';
-        header("Location: index.php?action={$actionStr}");
-        exit;
-    }
-
-
-    private function redirect(string $action): void
-    {
-        header("Location: index.php?action={$action}");
-        exit;
-    }
-
-
-    /**
-     * Lista os envios do usuário atual
-     */
     public function actionMeusEnvios(): void
     {
         $this->submenuAtivo = 'meusEnvios';
@@ -251,52 +203,56 @@ final class UploadFolhasRespostasController
 
         $db = $this->getDb();
 
-        // Ajuste filtro por usuário se necessário (WHERE usuario_id = :id)
         $stmt = $db->query("
-            SELECT lote_id, status, criado_em, atualizado_em, mensagem_erro
+            SELECT id, nome, status, criado_em, atualizado_em, mensagem_erro, tempo_processamento_segundos
             FROM lotes_correcao
             ORDER BY criado_em DESC
         ");
 
         $lotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
         $this->render('meusEnvios', compact('lotes'));
     }
 
     /**
-     * Lista os cadernos de um lote específico
+     * ✅ CORRIGIDO: Recebe nome, converte para ID
      */
     public function actionMeusCadernos(): void
     {
-        $loteId = $_GET['lote_id'] ?? null;
-        if (!$loteId) {
+        $nomeLote = $_GET['lote_nome'] ?? null;  // ✅ nome
+        if (!$nomeLote) {
             $this->redirecionaComFlash('negative', 'Lote inválido', ['meusEnvios']);
             return;
         }
 
         $db = $this->getDb();
 
-        // Agrupa folhas por caderno_hash
+        // Converter nome → ID
+        $stmt = $db->prepare("SELECT id FROM lotes_correcao WHERE nome = :nomeLote");
+        $stmt->execute([':nomeLote' => $nomeLote]);
+        $loteData = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$loteData) {
+            $this->redirecionaComFlash('negative', 'Lote não encontrado', ['meusEnvios']);
+            return;
+        }
+        $loteIdNumerico = $loteData['id'];
+
         $stmt = $db->prepare("
-            SELECT 
-                caderno_hash,
-                COUNT(*) as total_folhas,
-                MIN(pagina) as primeira_pagina,
-                MAX(pagina) as ultima_pagina
+            SELECT caderno_hash, COUNT(*) as total_folhas,
+                   MIN(pagina) as primeira_pagina, MAX(pagina) as ultima_pagina
             FROM paginas_lote
-            WHERE lote_id = :lote_id AND caderno_hash IS NOT NULL AND caderno_hash != ''
+            WHERE lote_id = :loteId AND caderno_hash IS NOT NULL AND caderno_hash != ''
             GROUP BY caderno_hash
             ORDER BY primeira_pagina ASC
         ");
-        $stmt->execute([':lote_id' => $loteId]);
+        $stmt->execute([':loteId' => $loteIdNumerico]);
         $cadernos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $this->pgTitulo = 'Cadernos do lote';
-        $this->render('meusCadernos', compact('loteId', 'cadernos'));
+        $this->pgTitulo = 'Cadernos do lote ' . $nomeLote;
+        $this->render('meusCadernos', compact('nomeLote', 'cadernos'));
     }
 
     /**
-     * Coleta respostas: envia lote para fila RabbitMQ
+     * ✅ CORRIGIDO: Recebe nome, converte para dados do lote
      */
     public function actionColetar(): void
     {
@@ -306,30 +262,30 @@ final class UploadFolhasRespostasController
             exit;
         }
 
-        $loteId = $_POST['lote_id'] ?? null;
-
-        if (!$loteId) {
-            $this->redirecionaComFlash('negative', 'Lote inválido', ['fila']);
+        $nomeLote = $_POST['lote_nome'] ?? null;  // ✅ nomeLote
+        if (!$nomeLote) {
+            $this->redirecionaComFlash('negative', 'Lote inválido', ['verFila']);
             return;
         }
 
         $db = $this->getDb();
 
+        // Buscar lote por NOME
         $stmt = $db->prepare("
-        SELECT id, lote_id, s3_prefix, total_arquivos, status
-        FROM lotes_correcao
-        WHERE lote_id = :lote_id
-    ");
-        $stmt->execute([':lote_id' => $loteId]);
+            SELECT id, nome, s3_prefix, total_arquivos, status
+            FROM lotes_correcao
+            WHERE nome = :nomeLote
+        ");
+        $stmt->execute([':nomeLote' => $nomeLote]);
         $lote = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$lote) {
-            $this->redirecionaComFlash('negative', 'Lote não encontrado', ['fila']);
+            $this->redirecionaComFlash('negative', 'Lote não encontrado', ['verFila']);
             return;
         }
 
         if ($lote['total_arquivos'] <= 0) {
-            $this->redirecionaComFlash('warning', 'Lote sem arquivos para processar.', ['fila']);
+            $this->redirecionaComFlash('warning', 'Lote sem arquivos para processar.', ['verFila']);
             return;
         }
 
@@ -341,7 +297,7 @@ final class UploadFolhasRespostasController
             'inputPath'  => $inputPath,
             'batchSize'  => 100,
             'numThreads' => 6,
-            'loteId'     => $loteId,
+            'loteId'     => $nomeLote,  // ✅ Nome para Java
         ];
         $jsonPayload = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
@@ -361,48 +317,45 @@ final class UploadFolhasRespostasController
             );
 
             $channel->basic_publish($msg, '', $queueName);
-
             $channel->close();
             $connection->close();
 
-            // Atualiza status para em_processamento
+            // Atualiza status (usa NOME)
             $stmt = $db->prepare("
-            UPDATE lotes_correcao
-            SET status = 'em_processamento', atualizado_em = :agora
-            WHERE lote_id = :lote_id
-        ");
+                UPDATE lotes_correcao
+                SET status = 'em_processamento', atualizado_em = :agora
+                WHERE nome = :nomeLote
+            ");
             $stmt->execute([
-                ':agora'   => date('Y-m-d H:i:s'),
-                ':lote_id' => $loteId,
+                ':agora' => date('Y-m-d H:i:s'),
+                ':nomeLote' => $nomeLote,
             ]);
 
-            $this->redirecionaComFlash('success', 'Lote enviado para processamento.', ['fila']);
+            $this->redirecionaComFlash('success', 'Lote enviado para processamento.', ['verFila']);
         } catch (Throwable $e) {
-            $this->redirecionaComFlash('negative', 'Falha ao enviar para RabbitMQ: ' . $e->getMessage(), ['fila']);
+            $this->redirecionaComFlash('negative', 'Falha ao enviar para RabbitMQ: ' . $e->getMessage(), ['verFila']);
         }
     }
 
-
     /**
-     * Recalcula um lote (reenvia para processamento)
+     * ✅ CORRIGIDO: actionRecalcular (igual actionColetar)
      */
     public function actionRecalcular(): void
     {
-        $loteId = $_POST['lote_id'] ?? null;
-        if (!$loteId) {
+        $nomeLote = $_POST['lote_nome'] ?? null;
+        if (!$nomeLote) {
             $this->redirecionaComFlash('negative', 'Lote inválido', ['verFila']);
             return;
         }
 
         $db = $this->getDb();
 
-        // Busca lote
         $stmt = $db->prepare("
-        SELECT id, lote_id, s3_prefix, total_arquivos, status
-        FROM lotes_correcao
-        WHERE lote_id = :lote_id
-    ");
-        $stmt->execute([':lote_id' => $loteId]);
+            SELECT id, nome, s3_prefix, total_arquivos, status
+            FROM lotes_correcao
+            WHERE nome = :nomeLote
+        ");
+        $stmt->execute([':nomeLote' => $nomeLote]);
         $lote = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$lote) {
@@ -413,29 +366,27 @@ final class UploadFolhasRespostasController
         try {
             $db->beginTransaction();
 
-            // Seleciona folhas com problema (defeituosa ou repetida) para tratamento / reprocessamento
+            $loteIdNumerico = $lote['id'];
+
             $folhasProblemaStmt = $db->prepare("
-            SELECT id, caderno_hash, pagina, status
-            FROM paginas_lote
-            WHERE lote_id = :lote_id AND status IN ('defeituosa', 'repetida')
-        ");
-            $folhasProblemaStmt->execute([':lote_id' => $loteId]);
+                SELECT id, caderno_hash, pagina, status
+                FROM paginas_lote
+                WHERE lote_id = :loteId AND status IN ('defeituosa', 'repetida')
+            ");
+            $folhasProblemaStmt->execute([':loteId' => $loteIdNumerico]);
             $folhasProblema = $folhasProblemaStmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Aqui fica a lógica específica para atualizar ou marcar essas folhas como para recálculo
-            // Exemplo genérico: alterar status para 'pendente_recorte'
             foreach ($folhasProblema as $folha) {
                 $updateStmt = $db->prepare("
-                UPDATE paginas_lote
-                SET status = 'pendente_recorte', atualizado_em = NOW()
-                WHERE id = :id
-            ");
+                    UPDATE paginas_lote
+                    SET status = 'pendente_recorte', atualizado_em = NOW()
+                    WHERE id = :id
+                ");
                 $updateStmt->execute([':id' => $folha['id']]);
             }
 
             $db->commit();
 
-            // Prepara payload para fila RabbitMQ com batch e threads menores
             $bucket = 'dadoscorretor';
             $s3Prefix = rtrim($lote['s3_prefix'], '/');
             $inputPath = "s3://{$bucket}/{$s3Prefix}";
@@ -444,21 +395,19 @@ final class UploadFolhasRespostasController
                 'inputPath'  => $inputPath,
                 'batchSize'  => 10,
                 'numThreads' => 2,
-                'loteId'     => $loteId,
-                // Opcional: enviar IDs ou info das folhasProblema se consumidor suportar
+                'loteId'     => $nomeLote,  // ✅ Nome para Java
             ];
 
             RabbitMQHelper::enviarParaFila('respostas_queue', $payload);
 
-            // Atualiza status para 'em_processamento'
             $stmt = $db->prepare("
-            UPDATE lotes_correcao
-            SET status = 'em_processamento', atualizado_em = :agora
-            WHERE lote_id = :lote_id
-        ");
+                UPDATE lotes_correcao
+                SET status = 'em_processamento', atualizado_em = :agora
+                WHERE nome = :nomeLote
+            ");
             $stmt->execute([
-                ':agora'   => date('Y-m-d H:i:s'),
-                ':lote_id' => $loteId,
+                ':agora' => date('Y-m-d H:i:s'),
+                ':nomeLote' => $nomeLote,
             ]);
 
             $this->redirecionaComFlash('success', 'Lote reenviado para recálculo', ['verFila']);
@@ -470,5 +419,24 @@ final class UploadFolhasRespostasController
         }
     }
 
-}
+    private function render(string $view, array $data = []): void
+    {
+        extract($data);
+        $controller = $this;
+        require __DIR__ . "/../views/uploadFolhasRespostas/{$view}.php";
+    }
 
+    private function redirecionaComFlash(string $tipo, string $msg, array $action = []): void
+    {
+        $_SESSION['flash'] = ['tipo' => $tipo, 'msg' => $msg];
+        $actionStr = $action ? $action[0] : 'verFila';
+        header("Location: index.php?action={$actionStr}");
+        exit;
+    }
+
+    private function redirect(string $action): void
+    {
+        header("Location: index.php?action={$action}");
+        exit;
+    }
+}
