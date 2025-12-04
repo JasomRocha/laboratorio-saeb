@@ -111,15 +111,14 @@ final class UploadFolhasRespostasController
                 $loteIdNumerico = (int)$pdo->lastInsertId();
 
                 // 4) ✅ ENVIA PARA NORMALIZER COM LOTE ID
-                $callbackUrl = "http://" . $_SERVER['HTTP_HOST'] .
-                    "/uploadFolhasRespostas/actionCallbackNormalizacao";
+                $callbackUrl = "http://" . $_SERVER['HTTP_HOST'] . "/index.php?action=callbackNormalizacao";
 
                 $payload = [
                     'nomeLote' => $model->nomeLote,
                     'zipKey' => $zipKey,
                     'bucket' => 'dadoscorretor',
-                    'callbackUrl' => $callbackUrl,           // ✅ Para normalizer avisar
-                    'loteIdNumerico' => $loteIdNumerico     // ✅ ID para repassar ao Java
+                    'callbackUrl' => $callbackUrl,
+                    'loteIdNumerico' => $loteIdNumerico
                 ];
 
                 RabbitMQHelper::enviarParaFila('normalizacao_queue', $payload);
@@ -135,107 +134,180 @@ final class UploadFolhasRespostasController
         $this->render('upload', compact('model', 'acceptMimeTypes', 'coletas'));
     }
 
-
     public function actionCallbackNormalizacao(): void
     {
-        // Meu endpoint só aceita POST
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo 'Método não permitido';
-            return;
+        header('Content-Type: application/json');
+
+        $logFile = __DIR__ . '/../storage/logs/callback.log';
+        if (!is_dir(dirname($logFile))) {
+            if (!mkdir($concurrentDirectory = dirname($logFile), 0777, true) && !is_dir($concurrentDirectory)) {
+                throw new \RuntimeException(sprintf('Directory "%s" was not created', $concurrentDirectory));
+            }
         }
 
-        // Body esperado (JSON):
-        // {
-        //   "nomeLote": "Lote_123",
-        //   "event": "started" | "finished" | "error",
-        //   "normalizedPrefix": "normalizados/Lote_123/",
-        //   "errorMessage": "opcional"
-        // }
+        $logEntry = [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'method' => $_SERVER['REQUEST_METHOD'] ?? 'N/A',
+            'uri' => $_SERVER['REQUEST_URI'] ?? 'N/A',
+            'query_string' => $_SERVER['QUERY_STRING'] ?? 'N/A',
+            'body' => file_get_contents('php://input'),
+            'get_params' => $_GET
+        ];
+
+        file_put_contents($logFile, json_encode($logEntry, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "\n---\n", FILE_APPEND);
+
+        error_log("=== Callback recebido em " . date('Y-m-d H:i:s') . " ===");
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            error_log("Método não permitido");
+            echo json_encode(['error' => 'Método não permitido']);
+            exit;
+        }
 
         $body = file_get_contents('php://input');
+        error_log("Body recebido: " . $body); // ✅ Log do payload
+
         $data = json_decode($body, true);
 
         if (!is_array($data) || empty($data['nomeLote']) || empty($data['event'])) {
             http_response_code(400);
-            echo 'Payload inválido';
-            return;
+            error_log("Payload inválido: " . print_r($data, true));
+            echo json_encode(['error' => 'Payload inválido']);
+            exit; // ✅ exit
         }
 
         $nomeLote = $data['nomeLote'];
         $event = $data['event'];
 
+        error_log("Processando evento: {$event} para lote: {$nomeLote}");
+
         $pdo = $this->getDb();
 
         try {
             switch ($event) {
+
                 case 'started':
-                    // normalizador avisou que começou a normalizar
                     $stmt = $pdo->prepare("
-                    UPDATE lotes_correcao
-                    SET status = 'normalizing', atualizado_em = NOW()
-                    WHERE nome = :nome
+                        UPDATE lotes_correcao
+                        SET status = 'normalizing', atualizado_em = NOW()
+                        WHERE nome = :nome
                     ");
                     $stmt->execute([':nome' => $nomeLote]);
+                    $affected = $stmt->rowCount(); // ✅ Verifica linhas afetadas
+                    error_log("Event 'started' - Linhas afetadas: {$affected}");
                     break;
 
                 case 'finished':
-                    // normalização concluída, já temos prefixo das imagens normalizadas
                     $normalizedPrefix = $data['normalizedPrefix'] ?? null;
                     $totalImagens = $data['totalImagens'] ?? 0;
+                    $loteIdNumerico = $data['loteIdNumerico'] ?? null;
+
                     if (!$normalizedPrefix) {
                         http_response_code(400);
-                        echo 'normalizedPrefix obrigatório quando event=finished';
-                        return;
+                        error_log("normalizedPrefix ausente");
+                        echo json_encode(['error' => 'normalizedPrefix obrigatório']);
+                        exit;
+                    }
+
+                    if (!$loteIdNumerico) {
+                        http_response_code(400);
+                        error_log("loteIdNumerico ausente");
+                        echo json_encode(['error' => 'loteIdNumerico obrigatório']);
+                        exit;
                     }
 
                     $stmt = $pdo->prepare("
                         UPDATE lotes_correcao
                         SET status = 'normalized',
-                        s3_prefix = :s3_prefix,
-                        total_arquivos = :total_arquivos,
-                        atualizado_em = NOW()
+                            s3_prefix = :s3_prefix,
+                            total_arquivos = :total_arquivos,
+                            atualizado_em = NOW()
                         WHERE nome = :nome
-                        ");
+                    ");
                     $stmt->execute([
                         ':nome' => $nomeLote,
                         ':s3_prefix' => $normalizedPrefix,
                         ':total_arquivos' => $totalImagens
                     ]);
+                    $affected = $stmt->rowCount();
+                    error_log("Banco atualizado - Linhas: {$affected}");
+
+                    $bucket = 'dadoscorretor';
+                    $inputPath = "s3://{$bucket}/{$normalizedPrefix}";
+
+                    $payloadJava = [
+                        'inputPath' => $inputPath,
+                        'nomeLote' => $nomeLote,
+                        'loteIdNumerico' => (int)$loteIdNumerico,
+                        'callbackUrl' => "http://" . $_SERVER['HTTP_HOST'] . "/index.php?action=callbackProcessamento",
+                        'batchSize' => 100,
+                        'numThreads' => 8,
+                        'total' => $totalImagens
+                    ];
+
+                    try {
+                        RabbitMQHelper::enviarParaFila('respostas_queue', $payloadJava);
+
+                        $stmtFila = $pdo->prepare("
+                            UPDATE lotes_correcao 
+                            SET status = 'em_processamento', atualizado_em = NOW()
+                            WHERE id = :id
+                        ");
+                        $stmtFila->execute([':id' => $loteIdNumerico]);
+
+                        error_log("✅ Enviado para Java automaticamente - Lote ID: {$loteIdNumerico}");
+
+                    } catch (Throwable $e) {
+                        error_log("❌ Falha RabbitMQ para Java: " . $e->getMessage());
+                        // NÃO altera status, mantém 'normalized' para retry manual
+                    }
                     break;
 
                 case 'error':
                     $errorMessage = $data['errorMessage'] ?? 'Erro na normalização';
                     $stmt = $pdo->prepare("
-                        UPDATE lotes_correcao
-                        SET status = 'error_normalization',
+                    UPDATE lotes_correcao
+                    SET status = 'error_normalization',
                         mensagem_erro = :msg,
                         atualizado_em = NOW()
-                        WHERE nome = :nome
-                        ");
+                    WHERE nome = :nome
+                    ");
                     $stmt->execute([
                         ':nome' => $nomeLote,
                         ':msg' => $errorMessage,
                     ]);
+                    $affected = $stmt->rowCount();
+                    error_log("Event 'error' - Linhas afetadas: {$affected}, Mensagem: {$errorMessage}");
                     break;
 
                 default:
                     http_response_code(400);
-                    echo 'event inválido';
-                    return;
+                    error_log("Event inválido: {$event}");
+                    echo json_encode(['error' => 'event inválido']);
+                    exit;
             }
 
             http_response_code(200);
-            echo 'OK';
+            echo json_encode(['status' => 'OK', 'event' => $event, 'nomeLote' => $nomeLote]);
+            error_log("Callback processado com sucesso");
+            exit;
+
         } catch (Throwable $e) {
+            error_log("ERRO no callback: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+
             http_response_code(500);
-            echo 'Erro ao atualizar lote: ' . $e->getMessage();
+            echo json_encode(['error' => $e->getMessage()]);
+            exit;
         }
     }
 
+
     /**
      * ✅ CORRIGIDO: JOIN com l.id (não l.nome)
-     */
+     *
+     * */
     public function actionVerFila(): void
     {
         $db = $this->getDb();
@@ -431,11 +503,11 @@ final class UploadFolhasRespostasController
 
         $bucket = 'dadoscorretor';
         $s3Prefix = rtrim($lote['s3_prefix'], '/');
-        $inputPath = "s3://{$bucket}/cliente/saeb/uploads/normalizadas/{$s3Prefix}";
+        $inputPath = "s3://{$bucket}/cliente/saeb/normalizadas/{$s3Prefix}";
 
         // Aqui será o endpoint do qstione
         $callbackUrl = "http://" . $_SERVER['HTTP_HOST'] .
-            "/uploadFolhasRespostas/actionCallbackNormalizacao";
+            "/index.php?action=callbackNormalizacao";
 
         $payload = [
             'inputPath' => $inputPath,
@@ -454,7 +526,7 @@ final class UploadFolhasRespostasController
             UPDATE lotes_correcao 
             SET status = 'fila', atualizado_em = NOW()
             WHERE id = :id
-        ");
+            ");
             $stmt->execute([':id' => $loteIdNumerico]);
 
             echo "Lote {$lote['nome']} enviado para processamento.";
@@ -465,7 +537,7 @@ final class UploadFolhasRespostasController
             UPDATE lotes_correcao 
             SET status = 'normalized', mensagem_erro = :erro
             WHERE id = :id
-        ");
+            ");
             $stmt->execute([
                 ':id' => $loteIdNumerico,
                 ':erro' => 'Falha RabbitMQ: ' . $e->getMessage()
@@ -475,7 +547,6 @@ final class UploadFolhasRespostasController
             echo "Falha RabbitMQ: " . $e->getMessage();
         }
     }
-
 
     /**
      * ✅ CORRIGIDO: actionRecalcular (igual actionColetar)
@@ -591,29 +662,18 @@ final class UploadFolhasRespostasController
         $body = file_get_contents('php://input');
         $data = json_decode($body, true);
 
-        if (!is_array($data) || empty($data['nomeLote'])) {
+        if (!is_array($data) || empty($data['loteIdNumerico'])) {
             http_response_code(400);
             echo 'Payload inválido';
             return;
         }
 
-        $nomeLote = $data['nomeLote'];
-        $paginas  = $data['paginas']            ?? [];
-        $cCompletos   = $data['cadernosCompletos']   ?? [];
+        $loteId = $data['loteIdNumerico'];
+        $paginas  = $data['paginas'] ?? [];
+        $cCompletos = $data['cadernosCompletos'] ?? [];
         $cIncompletos = $data['cadernosIncompletos'] ?? [];
 
         $db = $this->getDb();
-
-        // Resolver lote_id
-        $stmt = $db->prepare("SELECT id FROM lotes_correcao WHERE nome = :nome");
-        $stmt->execute([':nome' => $nomeLote]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row) {
-            http_response_code(400);
-            echo 'Lote não encontrado';
-            return;
-        }
-        $loteId = (int)$row['id'];
 
         try {
             $db->beginTransaction();

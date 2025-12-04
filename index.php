@@ -11,6 +11,7 @@ require_once __DIR__ . '/helpers/S3Helper.php';
 require_once __DIR__ . '/helpers/GhostscriptHelper.php';
 require_once __DIR__ . '/helpers/ZipHelper.php';
 require_once __DIR__ . '/helpers/RabbitMQHelper.php';
+require_once __DIR__ . '/helpers/RespostasCadernoHelper.php';
 
 require_once __DIR__ . '/controllers/UploadFolhasRespostasController.php';
 require_once __DIR__ . '/controllers/DownloadsController.php';
