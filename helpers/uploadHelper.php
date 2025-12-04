@@ -1,5 +1,7 @@
 <?php
 
+namespace helpers;
+
 final class uploadHelper
 {
     public static function processarUpload(string $tmpPath, string $originalName, string $s3Prefix): int

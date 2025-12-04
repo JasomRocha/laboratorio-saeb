@@ -6,6 +6,9 @@
 /* @var $paginas array */
 /* @var $cadernosIncompletos array */
 /* @var $tempoSegundos int|null */
+
+use controllers\UploadFolhasRespostasController;
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -54,7 +57,7 @@
             <div class="content">
                 <?= htmlspecialchars($controller->pgTitulo) ?>
                 <div class="sub header">
-                    Informações detalhadas do lote <strong><?= htmlspecialchars($pacote['lote_id']) ?></strong>
+                    Informações detalhadas do lote <strong><?= htmlspecialchars($pacote['nome']) ?></strong>
                 </div>
             </div>
         </h1>
@@ -81,7 +84,7 @@
                                 <tbody>
                                 <tr>
                                     <td style="width:220px"><strong>Descrição do arquivo</strong></td>
-                                    <td><?= htmlspecialchars($pacote['lote_id']) ?></td>
+                                    <td><?= htmlspecialchars($pacote['descricao']) ?></td>
                                 </tr>
                                 <tr>
                                     <td><strong>Carregamento</strong></td>

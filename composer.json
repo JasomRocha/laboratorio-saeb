@@ -16,6 +16,7 @@
         "ext-fileinfo": "*",
         "php-amqplib/php-amqplib": "^3.7",
         "spatie/pdf-to-image": "^1.2",
-        "ext-zip": "*"
+        "ext-zip": "*",
+      "ext-pdo": "*"
     }
 }

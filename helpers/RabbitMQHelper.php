@@ -1,5 +1,7 @@
 <?php
 
+namespace helpers;
+
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 

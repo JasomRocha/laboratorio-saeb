@@ -1,6 +1,9 @@
 <?php
-use Aws\S3\S3Client;
+
+namespace helpers;
+
 use Aws\Exception\AwsException;
+use Aws\S3\S3Client;
 
 final class S3Helper
 {
@@ -14,12 +17,12 @@ final class S3Helper
     {
         if (!self::$client) {
             self::$client = new S3Client([
-                'version'                 => 'latest',
-                'region'                  => 'us-east-1',
-                'endpoint'                => self::$endpoint,
+                'version' => 'latest',
+                'region' => 'us-east-1',
+                'endpoint' => self::$endpoint,
                 'use_path_style_endpoint' => true,
-                'credentials'             => [
-                    'key'    => self::$accessKey,
+                'credentials' => [
+                    'key' => self::$accessKey,
                     'secret' => self::$secretKey,
                 ],
                 'suppress_php_deprecation_warning' => true,
@@ -33,9 +36,9 @@ final class S3Helper
         try {
             $client = self::getClient();
             $client->putObject([
-                'Bucket'      => self::$bucket,
-                'Key'         => $key,
-                'SourceFile'  => $filePath,
+                'Bucket' => self::$bucket,
+                'Key' => $key,
+                'SourceFile' => $filePath,
                 'ContentType' => mime_content_type($filePath) ?: 'image/jpeg',
             ]);
             return true;

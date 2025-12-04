@@ -1,5 +1,7 @@
 <?php
 
+namespace helpers;
+
 final class ZipHelper
 {
     public static function processarZip(string $zipPath, string $s3Prefix): int
@@ -26,7 +28,7 @@ final class ZipHelper
                 }
                 $path = $file->getRealPath();
                 $name = $file->getFilename();
-                $ext  = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
 
                 if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
                     if (S3Helper::uploadFile($path, $s3Prefix . $name)) {

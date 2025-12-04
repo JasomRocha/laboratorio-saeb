@@ -2,6 +2,9 @@
 /* @var $controller UploadFolhasRespostasController */
 /* @var $loteId string */
 /* @var $cadernos array */
+
+use controllers\UploadFolhasRespostasController;
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">

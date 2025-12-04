@@ -1,7 +1,10 @@
 <?php
 
-use Aws\S3\S3Client;
+namespace controllers;
+
 use Aws\Exception\AwsException;
+use Aws\S3\S3Client;
+use PDO;
 
 final class DownloadsController
 {
@@ -56,19 +59,19 @@ final class DownloadsController
             exit;
         }
 
-        $bucket   = 'dadoscorretor';
-        $prefix   = rtrim($lote['s3_prefix'], '/') . '/';
+        $bucket = 'dadoscorretor';
+        $prefix = rtrim($lote['s3_prefix'], '/') . '/';
         $endpoint = 'http://localhost:9000';
         $accessKey = '<spaces-key>';
         $secretKey = '<spaces-secret>';
 
         $s3 = new S3Client([
-            'version'                 => 'latest',
-            'region'                  => 'us-east-1',
-            'endpoint'                => $endpoint,
+            'version' => 'latest',
+            'region' => 'us-east-1',
+            'endpoint' => $endpoint,
             'use_path_style_endpoint' => true,
-            'credentials'             => [
-                'key'    => $accessKey,
+            'credentials' => [
+                'key' => $accessKey,
                 'secret' => $secretKey,
             ],
         ]);
@@ -109,10 +112,10 @@ final class DownloadsController
 
                         $object = $s3->getObject([
                             'Bucket' => $bucket,
-                            'Key'    => $key,
+                            'Key' => $key,
                         ]);
 
-                        $body = (string) $object['Body'];
+                        $body = (string)$object['Body'];
                         $zip->addFromString($nameInZip, $body);
                     }
                 }
@@ -175,7 +178,7 @@ final class DownloadsController
     public function actionDownloadCaderno(): void
     {
         // Parâmetros obrigatórios
-        $loteId      = $_GET['lote_id']      ?? null;
+        $loteId = $_GET['lote_id'] ?? null;
         $cadernoHash = $_GET['caderno_hash'] ?? null;
 
         if (!$loteId || !$cadernoHash) {
@@ -218,7 +221,7 @@ final class DownloadsController
         ORDER BY pagina ASC
     ");
             $stmtFolhas->execute([
-                ':lote_id'      => $loteId,
+                ':lote_id' => $loteId,
                 ':caderno_hash' => $cadernoHash,
             ]);
             $folhas = $stmtFolhas->fetchAll(PDO::FETCH_ASSOC);
@@ -236,18 +239,18 @@ final class DownloadsController
         }
 
         // 3) Configuração S3/MinIO (igual ao download.php)
-        $bucket    = 'dadoscorretor';
-        $endpoint  = 'http://localhost:9000';
+        $bucket = 'dadoscorretor';
+        $endpoint = 'http://localhost:9000';
         $accessKey = '<spaces-key>';
         $secretKey = '<spaces-secret>';
 
         $s3 = new S3Client([
             'version' => 'latest',
-            'region'  => 'us-east-1',
+            'region' => 'us-east-1',
             'endpoint' => $endpoint,
             'use_path_style_endpoint' => true,
             'credentials' => [
-                'key'    => $accessKey,
+                'key' => $accessKey,
                 'secret' => $secretKey,
             ],
             // Opcional: suprimir aviso de depreciação do PHP 7.4
@@ -279,13 +282,13 @@ final class DownloadsController
 
                 $object = $s3->getObject([
                     'Bucket' => $bucket,
-                    'Key'    => $key,
+                    'Key' => $key,
                 ]);
 
-                $body = (string) $object['Body'];
+                $body = (string)$object['Body'];
 
                 // Nome amigável dentro do ZIP: pagina_001_nomearquivo.ext
-                $paginaNum = (int) $f['pagina'];
+                $paginaNum = (int)$f['pagina'];
                 $nameInZip = sprintf('pagina_%03d_%s', $paginaNum, basename($key));
 
                 $zip->addFromString($nameInZip, $body);

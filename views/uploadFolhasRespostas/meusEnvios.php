@@ -1,6 +1,9 @@
 <?php
 /* @var $controller UploadFolhasRespostasController */
 /* @var $lotes array */
+
+use controllers\UploadFolhasRespostasController;
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">

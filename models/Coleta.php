@@ -1,5 +1,8 @@
 <?php
 
+namespace models;
+use PDO;
+
 class Coleta
 {
     private static function getDb(): PDO

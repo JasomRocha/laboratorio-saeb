@@ -1,6 +1,9 @@
 <?php
 /* @var $controller UploadFolhasRespostasController */
 /* @var $lotes array */
+
+use controllers\UploadFolhasRespostasController;
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -79,25 +82,34 @@
                         $status = $l['status'];
                         $rowClass = '';
                         $iconClass = '';
-
                         switch ($status) {
                             case 'concluido':
-                                $rowClass = 'positive';
+                            case 'finished': // novo
+                                $rowClass  = 'positive';
                                 $iconClass = 'check green icon circular inverted';
                                 break;
+
                             case 'erro':
-                                $rowClass = 'negative';
+                            case 'error_normalization':
+                            case 'error_processing':
+                                $rowClass  = 'negative';
                                 $iconClass = 'warning orange circular inverted icon';
                                 break;
+
                             case 'em_processamento':
-                                $rowClass = '';
+                                $rowClass  = '';
                                 $iconClass = 'sync blue icon circular inverted loading';
                                 break;
+
+                            case 'uploaded_bruto':
+                            case 'normalizing':
+                            case 'normalized':
                             default:
-                                $rowClass = '';
+                                $rowClass  = '';
                                 $iconClass = 'clock grey icon circular inverted';
                                 break;
                         }
+
 
                         $totalPaginas = $l['total_paginas'] !== null
                                 ? (int)$l['total_paginas']
@@ -118,7 +130,7 @@
                                 </span>
                             </td>
                             <td>
-                                <?php if ($status === 'concluido'): ?>
+                                <?php if ($status === 'concluido' || $status === 'finished'): ?>
                                     <i class="check icon"></i>
                                     Concluído em <?= date('d/m/Y \à\s H:i:s', strtotime($l['atualizado_em'])) ?><br>
                                     <a class="ui green small label"><?= $corrigidas ?> corrigidas</a>
@@ -128,22 +140,35 @@
                                     <?php if ($repetidas > 0): ?>
                                         <a class="ui black small label"><?= $repetidas ?> repetidas</a>
                                     <?php endif; ?>
-                                <?php elseif ($status === 'erro'): ?>
+
+                                <?php elseif (in_array($status, ['erro', 'error_normalization', 'error_processing'], true)): ?>
                                     <i class="warning icon"></i>
                                     Erro em <?= date('d/m/Y \à\s H:i:s', strtotime($l['atualizado_em'])) ?><br>
                                     <a class="ui red small label"><?= $totalPaginas ?> páginas com problema</a>
+
                                 <?php elseif ($status === 'em_processamento'): ?>
                                     <i class="sync loading icon"></i>Processando...
+
+                                <?php elseif ($status === 'uploaded_bruto'): ?>
+                                    <i class="clock icon"></i>Aguardando normalização
+
+                                <?php elseif ($status === 'normalizing'): ?>
+                                    <i class="sync loading icon"></i>Normalizando imagens...
+
+                                <?php elseif ($status === 'normalized'): ?>
+                                    <i class="check icon"></i>Pronto para processamento
+
                                 <?php else: ?>
                                     <i class="clock icon"></i>Aguardando processamento
                                 <?php endif; ?>
+
                             </td>
                             <td class="center aligned single line collapsing">
                                 <span class="muted"><?= $totalPaginas ?> páginas no arquivo</span>
                             </td>
                             <td class="right aligned">
                                 <div class="ui small buttons">
-                                    <?php if ($status === 'uploaded'): ?>
+                                    <?php if ($status === 'normalized'): ?>
                                         <form action="index.php?action=coletar" method="post" style="display:inline">
                                             <input type="hidden" name="nome" value="<?= htmlspecialchars($l['nome']) ?>">
                                             <button class="ui compact primary button" type="submit">

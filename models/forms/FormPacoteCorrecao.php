@@ -1,5 +1,6 @@
 <?php
 
+namespace models\forms;
 class FormPacoteCorrecao
 {
     public ?string $nomeLote = null;

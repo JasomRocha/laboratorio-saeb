@@ -1,5 +1,7 @@
 <?php
 
+namespace helpers;
+
 final class GhostscriptHelper
 {
     private static string $gsPath = '"C:\\Program Files\\gs\\gs10.05.1\\bin\\gswin64c.exe"';
@@ -8,14 +10,14 @@ final class GhostscriptHelper
     {
         $enviadas = 0;
         $baseName = pathinfo($pdfName, PATHINFO_FILENAME);
-        $tempDir  = sys_get_temp_dir() . DIRECTORY_SEPARATOR . uniqid('pdf_', true);
+        $tempDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . uniqid('pdf_', true);
 
         if (!mkdir($tempDir, 0777, true) && !is_dir($tempDir)) {
             throw new RuntimeException(sprintf('Diretório temporário não pôde ser criado: %s', $tempDir));
         }
 
         $outputPattern = $tempDir . DIRECTORY_SEPARATOR . $baseName . '_page_%03d.jpg';
-        $logFile       = $tempDir . DIRECTORY_SEPARATOR . 'gs_error.log';
+        $logFile = $tempDir . DIRECTORY_SEPARATOR . 'gs_error.log';
 
         $cmd = sprintf(
             '%s -dSAFER -dBATCH -dNOPAUSE -sDEVICE=jpeg -r150 -sOutputFile="%s" "%s" 2> "%s"',

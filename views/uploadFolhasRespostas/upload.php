@@ -3,6 +3,9 @@
 /* @var $model FormPacoteCorrecao */
 /* @var $acceptMimeTypes string[] */
 
+use controllers\UploadFolhasRespostasController;
+use models\forms\FormPacoteCorrecao;
+
 $maxUploadSize = ini_get('upload_max_filesize');
 ?>
 <!DOCTYPE html>

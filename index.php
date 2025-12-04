@@ -1,5 +1,8 @@
 <?php
 
+use controllers\DownloadsController;
+use controllers\UploadFolhasRespostasController;
+
 require_once __DIR__ . '/vendor/autoload.php';
 
 require_once __DIR__ . '/models/forms/FormPacoteCorrecao.php';
@@ -66,6 +69,15 @@ switch ($action) {
     // Download de um caderno específico (ZIP por caderno)
     case 'downloadCaderno':
         $downloadController->actionDownloadCaderno();
+        break;
+
+    // o callback que o normalizador manda vai pra essa rota
+    case 'callbackNormalizacao':
+        $controller->actionCallbackNormalizacao();
+        break;
+
+    case 'callbackProcessamento':
+        $controller->actionCallbackProcessamento();
         break;
 
     // Qualquer outra coisa cai na tela inicial
