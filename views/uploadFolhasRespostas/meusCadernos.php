@@ -1,7 +1,8 @@
 <?php
 /* @var $controller UploadFolhasRespostasController */
-/* @var $loteId string */
+/* @var $nomeLote String */
 /* @var $cadernos array */
+
 
 use controllers\UploadFolhasRespostasController;
 
@@ -46,7 +47,7 @@ use controllers\UploadFolhasRespostasController;
     <main id="main" style="flex-grow:1">
         <h1 class="ui dividing header">
             <div class="content">
-                Cadernos do lote <?= htmlspecialchars($loteId) ?>
+                Cadernos do lote <?= htmlspecialchars($nomeLote) ?>
                 <div class="sub header">Baixe as folhas agrupadas por caderno</div>
             </div>
         </h1>
@@ -82,7 +83,7 @@ use controllers\UploadFolhasRespostasController;
                                     <td><?= (int)$c['total_folhas'] ?></td>
                                     <td><?= (int)$c['primeira_pagina'] ?> - <?= (int)$c['ultima_pagina'] ?></td>
                                     <td>
-                                        <a class="ui mini primary button" href="index.php?action=downloadCaderno&lote_id=<?= urlencode($loteId) ?>&caderno_hash=<?= urlencode($c['caderno_hash']) ?>">
+                                        <a class="ui mini primary button" href="index.php?action=downloadCaderno&lote_id=<?= urlencode($nomeLote) ?>&caderno_hash=<?= urlencode($c['caderno_hash']) ?>">
                                             Baixar caderno (ZIP)
                                         </a>
                                     </td>

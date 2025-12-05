@@ -260,7 +260,6 @@ final class UploadFolhasRespostasController
 
                     } catch (Throwable $e) {
                         error_log("❌ Falha RabbitMQ para Java: " . $e->getMessage());
-                        // NÃO altera status, mantém 'normalized' para retry manual
                     }
                     break;
 
@@ -303,11 +302,6 @@ final class UploadFolhasRespostasController
         }
     }
 
-
-    /**
-     * ✅ CORRIGIDO: JOIN com l.id (não l.nome)
-     *
-     * */
     public function actionVerFila(): void
     {
         $db = $this->getDb();
@@ -317,7 +311,7 @@ final class UploadFolhasRespostasController
                    l.mensagem_erro, l.criado_em, l.atualizado_em, l.tempo_processamento_segundos,
                    r.corrigidas, r.defeituosas, r.repetidas, r.total AS total_paginas
             FROM lotes_correcao l
-            LEFT JOIN resumo_lote r ON r.lote_id = l.id  -- ✅ l.id (bigint)
+            LEFT JOIN resumo_lote r ON r.lote_id = l.id  
             ORDER BY l.criado_em DESC
         ");
 
@@ -330,9 +324,6 @@ final class UploadFolhasRespostasController
         $this->render('verFila', compact('lotes'));
     }
 
-    /**
-     * ✅ CORRIGIDO: Busca por nome, depois converte para ID
-     */
     public function actionDetalhar(): void
     {
         $nomeLote = $_GET['nome'] ?? null;  // ✅ nome ao invés de lote_id
@@ -426,9 +417,6 @@ final class UploadFolhasRespostasController
         $this->render('meusEnvios', compact('lotes'));
     }
 
-    /**
-     * ✅ CORRIGIDO: Recebe nome, converte para ID
-     */
     public function actionMeusCadernos(): void
     {
         $nomeLote = $_GET['lote_nome'] ?? null;  // ✅ nome
@@ -461,12 +449,9 @@ final class UploadFolhasRespostasController
         $cadernos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $this->pgTitulo = 'Cadernos do lote ' . $nomeLote;
-        $this->render('meusCadernos', compact('nomeLote', 'cadernos'));
+        $this->render('meusCadernos', compact('nomeLote', 'cadernos', 'loteIdNumerico'));
     }
 
-    /**
-     * ✅ AUTOMATIZADA: Recebe loteId, envia para Java com callbackUrl
-     */
     public function actionColetar(): void
     {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -548,9 +533,6 @@ final class UploadFolhasRespostasController
         }
     }
 
-    /**
-     * ✅ CORRIGIDO: actionRecalcular (igual actionColetar)
-     */
     public function actionRecalcular(): void
     {
         $nomeLote = $_POST['lote_nome'] ?? null;
@@ -653,33 +635,101 @@ final class UploadFolhasRespostasController
 
     public function actionCallbackProcessamento(): void
     {
+        error_log("🎯 CALLBACK INICIADO - PID: " . getmypid());
+        error_log("🎯 URI: " . $_SERVER['REQUEST_URI']);
+        error_log("🎯 BODY: " . file_get_contents('php://input'));
+
+        error_log("📥 Callback PROCESSAMENTO recebido em " . date('Y-m-d H:i:s'));
+        $body = file_get_contents('php://input');
+        error_log("📦 Body recebido: " . substr($body, 0, 500));
+
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             http_response_code(405);
-            echo 'Método não permitido';
-            return;
+            error_log("❌ Método não permitido");
+            echo json_encode(['error' => 'Método não permitido']);
+            exit;
         }
 
-        $body = file_get_contents('php://input');
         $data = json_decode($body, true);
 
         if (!is_array($data) || empty($data['loteIdNumerico'])) {
             http_response_code(400);
-            echo 'Payload inválido';
-            return;
+            error_log("❌ Payload inválido: " . print_r($data, true));
+            echo json_encode(['error' => 'Payload inválido - loteIdNumerico obrigatório']);
+            exit;
         }
 
+        $event = $data['event'] ?? null;
         $loteId = $data['loteIdNumerico'];
-        $paginas  = $data['paginas'] ?? [];
+        $paginas = $data['paginas'] ?? [];
         $cCompletos = $data['cadernosCompletos'] ?? [];
         $cIncompletos = $data['cadernosIncompletos'] ?? [];
+        $processingTime = $data['processingTimeSeconds'] ?? null;  // ✅ já vem no payload
 
-        $db = $this->getDb();
+        error_log("✅ PROCESSAMENTO | loteId=$loteId | Event=$event | Páginas=" . count($paginas) . " | Completos=" . count($cCompletos) . " | Incompletos=" . count($cIncompletos));
+
+        $pdo = $this->getDb();
+        $pdo->beginTransaction();
 
         try {
-            $db->beginTransaction();
+            // ✅ 2) SEMPRE salva CADERNOS COMPLETOS
+            if (!empty($cCompletos)) {
+                error_log("📚 Inserindo " . count($cCompletos) . " cadernos completos...");
+                $sqlCaderno = "
+                INSERT INTO cadernos_lote (hash_caderno, qr_texto_completo, numero_paginas_processadas, status)
+                VALUES (:hash, :qrTexto, :numPags, :status)
+                ON DUPLICATE KEY UPDATE
+                    qr_texto_completo        = VALUES(qr_texto_completo),
+                    numero_paginas_processadas = VALUES(numero_paginas_processadas),
+                    status                   = VALUES(status),
+                    updated_at               = CURRENT_TIMESTAMP
+            ";
+                $stmtCad = $pdo->prepare($sqlCaderno);
 
-            // 1) Páginas -> paginas_lote
+                foreach ($cCompletos as $c) {
+                    $stmtCad->execute([
+                        ':hash'    => $c['hashCaderno'],
+                        ':qrTexto' => $c['qrTextoCompleto'] ?? null,
+                        ':numPags' => (int)($c['numeroPaginasProcessadas'] ?? 0),
+                        ':status'  => $c['status'] ?? 'completo',
+                    ]);
+
+                    if (!empty($c['respostas']) && is_array($c['respostas'])) {
+                        RespostasCadernoHelper::salvar($pdo, $c['hashCaderno'], $c['respostas']);
+                        error_log("✅ Respostas salvas para caderno: " . $c['hashCaderno']);
+                    }
+                }
+                error_log("✅ Cadernos completos salvos: " . count($cCompletos));
+            }
+
+            // ✅ 3) SEMPRE salva CADERNOS INCOMPLETOS
+            if (!empty($cIncompletos)) {
+                error_log("📚 Inserindo " . count($cIncompletos) . " cadernos incompletos...");
+                $sqlCaderno = "
+                INSERT INTO cadernos_lote (hash_caderno, qr_texto_completo, numero_paginas_processadas, status)
+                VALUES (:hash, :qrTexto, :numPags, :status)
+                ON DUPLICATE KEY UPDATE
+                    qr_texto_completo        = VALUES(qr_texto_completo),
+                    numero_paginas_processadas = VALUES(numero_paginas_processadas),
+                    status                   = VALUES(status),
+                    updated_at               = CURRENT_TIMESTAMP
+            ";
+                $stmtCad = $pdo->prepare($sqlCaderno);
+
+                foreach ($cIncompletos as $c) {
+                    $stmtCad->execute([
+                        ':hash'    => $c['hashCaderno'],
+                        ':qrTexto' => $c['qrTextoCompleto'] ?? null,
+                        ':numPags' => (int)($c['numeroPaginasProcessadas'] ?? 0),
+                        ':status'  => $c['status'] ?? 'incompleto',
+                    ]);
+                }
+                error_log("✅ Cadernos incompletos salvos: " . count($cIncompletos));
+            }
+
+            // ✅ 1) SEMPRE salva PÁGINAS (chunks + finais)
             if (!empty($paginas)) {
+                error_log("📄 Inserindo " . count($paginas) . " páginas em paginas_lote...");
                 $sqlPagina = "
                 INSERT INTO paginas_lote
                     (caderno_hash, pagina, lote_id, tipo_folha, status, mensagem, caminho_folha, criado_em, atualizado_em)
@@ -693,7 +743,7 @@ final class UploadFolhasRespostasController
                     caminho_folha = VALUES(caminho_folha),
                     atualizado_em = NOW()
             ";
-                $stmtPag = $db->prepare($sqlPagina);
+                $stmtPag = $pdo->prepare($sqlPagina);
 
                 foreach ($paginas as $p) {
                     $stmtPag->execute([
@@ -706,43 +756,11 @@ final class UploadFolhasRespostasController
                         ':caminhoFolha'=> $p['caminhoFolha'] ?? null,
                     ]);
                 }
+                error_log("✅ Páginas salvas: " . count($paginas));
             }
 
-            // 2) Cadernos completos/incompletos -> cadernos_lote
-            $sqlCaderno = "
-            INSERT INTO cadernos_lote (hash_caderno, qr_texto_completo, numero_paginas_processadas, status)
-            VALUES (:hash, :qrTexto, :numPags, :status)
-            ON DUPLICATE KEY UPDATE
-                qr_texto_completo        = VALUES(qr_texto_completo),
-                numero_paginas_processadas = VALUES(numero_paginas_processadas),
-                status                   = VALUES(status),
-                updated_at               = CURRENT_TIMESTAMP
-        ";
-            $stmtCad = $db->prepare($sqlCaderno);
-
-            foreach ($cCompletos as $c) {
-                $stmtCad->execute([
-                    ':hash'    => $c['hashCaderno'],
-                    ':qrTexto' => $c['qrTextoCompleto'] ?? null,
-                    ':numPags' => (int)($c['numeroPaginasProcessadas'] ?? 0),
-                    ':status'  => $c['status'] ?? 'completo',
-                ]);
-
-                if (!empty($c['respostas']) && is_array($c['respostas'])) {
-                    RespostasCadernoHelper::salvar($db, $c['hashCaderno'], $c['respostas']);
-                }
-            }
-
-            foreach ($cIncompletos as $c) {
-                $stmtCad->execute([
-                    ':hash'    => $c['hashCaderno'],
-                    ':qrTexto' => null,
-                    ':numPags' => (int)($c['numeroPaginasProcessadas'] ?? 0),
-                    ':status'  => $c['status'] ?? 'incompleto',
-                ]);
-            }
-
-            // 4) Atualizar resumo_lote (equivalente ao LoteRepository.atualizarResumoLote)
+            // ✅ 4) SEMPRE atualiza RESUMO_LOTE
+            error_log("📊 Atualizando resumo_lote...");
             $sqlResumo = "
             INSERT INTO resumo_lote (lote_id, corrigidas, defeituosas, repetidas, total, atualizado_em)
             SELECT lote_id,
@@ -761,19 +779,77 @@ final class UploadFolhasRespostasController
                 total        = VALUES(total),
                 atualizado_em= VALUES(atualizado_em)
         ";
-            $stmtResumo = $db->prepare($sqlResumo);
+            $stmtResumo = $pdo->prepare($sqlResumo);
             $stmtResumo->execute([':loteId' => $loteId]);
+            error_log("✅ Resumo_lote atualizado");
 
-            $db->commit();
-            http_response_code(200);
-            echo 'OK';
-        } catch (\Throwable $e) {
-            if ($db->inTransaction()) {
-                $db->rollBack();
+            $pdo->commit();
+            error_log("✅ ✅ ✅ TODAS as tabelas salvas com sucesso! (Páginas: " . count($paginas) . " | Completos: " . count($cCompletos) . " | Incompletos: " . count($cIncompletos) . ")");
+
+            if ($event) {
+                switch ($event) {
+                    case 'processing_started':
+                        $stmt = $pdo->prepare("
+                        UPDATE lotes_correcao 
+                        SET status = 'em_processamento', atualizado_em = NOW()
+                        WHERE id = :id
+                    ");
+                        $stmt->execute([':id' => $loteId]);
+                        error_log("✅ lotes_correcao → em_processamento");
+                        break;
+
+                    case 'finished':
+                        error_log("🔍 EXECUTANDO UPDATE finished para loteId=$loteId");
+
+                        $stmt = $pdo->prepare("
+                            UPDATE lotes_correcao 
+                            SET status = 'finished', atualizado_em = NOW(), tempo_processamento_segundos = :tempo
+                            WHERE id = :id
+                        ");
+
+                        $stmt->execute([':id' => $loteId, ':tempo' => (int)$processingTime,]);
+                        $rows = $stmt->rowCount();
+
+                        error_log("✅ UPDATE finished | loteId=$loteId | Linhas afetadas: $rows");
+
+                        // ✅ VERIFICA se funcionou
+                        $check = $pdo->query("SELECT status FROM lotes_correcao WHERE id = $loteId")->fetchColumn();
+                        error_log("🔍 STATUS FINAL no banco: $check");
+                        break;
+
+                    case 'chunk_processed':
+                        error_log("✅ Chunk processado: " . count($cCompletos) . " cadernos completos salvos");
+                        break;
+
+                    default:
+                        error_log("⚠️ Event desconhecido: $event (mas dados foram salvos)");
+                }
             }
+
+            http_response_code(200);
+            echo json_encode([
+                'status' => 'OK',
+                'event' => $event,
+                'loteId' => $loteId,
+                'salvos' => [
+                    'paginas' => count($paginas),
+                    'cadernosCompletos' => count($cCompletos),
+                    'cadernosIncompletos' => count($cIncompletos)
+                ]
+            ]);
+            error_log("✅ Callback PROCESSAMENTO concluído com sucesso");
+            exit;
+
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log("❌ ERRO FATAL no callbackProcessamento: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+
             http_response_code(500);
-            echo 'Erro ao processar callback: ' . $e->getMessage();
+            echo json_encode(['error' => $e->getMessage()]);
+            exit;
         }
     }
-
 }

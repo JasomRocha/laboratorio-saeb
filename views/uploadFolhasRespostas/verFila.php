@@ -168,20 +168,7 @@ use controllers\UploadFolhasRespostasController;
                             </td>
                             <td class="right aligned">
                                 <div class="ui small buttons">
-                                    <?php if ($status === 'normalized'): ?>
-                                        <form action="index.php?action=coletar" method="post" style="display:inline">
-                                            <input type="hidden" name="nome" value="<?= htmlspecialchars($l['nome']) ?>">
-                                            <button class="ui compact primary button" type="submit">
-                                                <i class="play icon"></i> Coletar respostas
-                                            </button>
-                                        </form>
-                                    <?php else: ?>
-                                        <form action="index.php?action=recalcular" method="post" style="display:inline">
-                                            <input type="hidden" name="nome" value="<?= htmlspecialchars($l['nome']) ?>">
-                                            <button class="ui compact orange button" type="submit">
-                                                <i class="repeat icon"></i> Recalcular
-                                            </button>
-                                        </form>
+                                    <?php if ($status === 'normalized' || $status === 'finished'): ?>
                                         <a class="ui compact icon button" href="index.php?action=detalhar&nome=<?= urlencode($l['nome']) ?>">
                                             <i class="list icon"></i> Detalhar
                                         </a>
