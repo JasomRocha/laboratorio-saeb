@@ -3,10 +3,10 @@
 namespace models\forms;
 class FormPacoteCorrecao
 {
-    public ?string $nomeLote = null;
+    public ?string $titulo = null;
     public ?array $arquivo = null;
     public ?int $coletaId = null;
-    public ?string $descricao = null;
+
 
     public static array $mimeTypes = [
         'application/pdf',
@@ -28,8 +28,8 @@ class FormPacoteCorrecao
         }
 
         // Valida lote
-        if (empty($this->nomeLote)) {
-            $this->errors['nomeLote'] = 'Informe o nome do lote.';
+        if (empty($this->titulo)) {
+            $this->errors['tituloLote'] = 'Informe o titulo do lote.';
         }
 
         // Valida arquivo

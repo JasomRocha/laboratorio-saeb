@@ -29,7 +29,7 @@ final class UploadFolhasRespostasController
     {
         session_start();
         $this->db = new PDO(
-            'mysql:host=localhost;port=23306;dbname=corretor_saeb;charset=utf8mb4',
+            'mysql:host=localhost;port=23306;dbname=saeb;charset=utf8mb4',
             'root',
             'root',
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
@@ -58,12 +58,11 @@ final class UploadFolhasRespostasController
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $model->coletaId = $_POST['FormPacoteCorrecao']['coletaId'] ?? null;
-            $model->nomeLote = $_POST['FormPacoteCorrecao']['nomeLote'] ?? null;
+            $model->titulo = $_POST['FormPacoteCorrecao']['tituloPacote'] ?? null;
             $model->arquivo = $_FILES['FormPacoteCorrecao_arquivo'] ?? null;
-            $model->descricao = $_POST['FormPacoteCorrecao']['descricao'] ?? null;
 
             if ($model->validate()) {
-                $loteSafe = preg_replace('/[^a-zA-Z0-9_-]/', '_', $model->nomeLote);
+                $tituloPacote = $model->titulo;
                 $zipTmp = $model->arquivo['tmp_name'];
                 $zipName = $model->arquivo['name'];
 
@@ -75,8 +74,8 @@ final class UploadFolhasRespostasController
                 }
 
                 // 2) Sobe ZIP bruto para S3
-                $zipKey = "cliente/saeb/uploads/{$loteSafe}/{$zipName}";
-                $okS3 = S3Helper::uploadFile($zipTmp, $zipKey);
+                $chave_zip = "cliente/saeb/uploads/{$tituloPacote}/{$zipName}";
+                $okS3 = S3Helper::uploadFile($zipTmp, $chave_zip);
 
                 if (!$okS3) {
                     $this->redirecionaComFlash('negative', 'Falha S3.', ['upload']);
@@ -88,44 +87,41 @@ final class UploadFolhasRespostasController
                 $agora = date('Y-m-d H:i:s');
 
                 $stmt = $pdo->prepare("
-                INSERT INTO lotes_correcao (nome, descricao, s3_prefix, total_arquivos, status, criado_em, atualizado_em)
-                VALUES (:nome, :descricao, :s3_prefix, :total, 'uploaded_bruto', :criado_em, :atualizado_em)
+                INSERT INTO saeb_pacotes (titulo, chave_s3, total_arquivos, estado, criado_por, criado_em)
+                VALUES (:titulo, :chave_s3, :total_arquivos, 'carregado', :criado_por, :criado_em)
                 ON DUPLICATE KEY UPDATE
-                    descricao = VALUES(descricao),
-                    s3_prefix = VALUES(s3_prefix),
+                    chave_s3 = VALUES(chave_s3),
                     total_arquivos = VALUES(total_arquivos),
-                    status = 'uploaded_bruto',
-                    atualizado_em = VALUES(atualizado_em)
+                    estado = 'carregado'
             ");
 
                 $stmt->execute([
-                    ':nome' => $model->nomeLote,
-                    ':descricao' => $model->descricao,
-                    ':s3_prefix' => $zipKey,
-                    ':total' => 1,
+                    ':titulo' => $model->titulo,
+                    ':chave_s3' => $chave_zip,
+                    ':total_arquivos' => 1,
                     ':criado_em' => $agora,
-                    ':atualizado_em' => $agora,
+                    ':criado_por' => 'Usuário'
                 ]);
 
                 // ✅ PEGA O ID DO LOTE (NOVO ou EXISTENTE)
-                $loteIdNumerico = (int)$pdo->lastInsertId();
+                $idPacote = (int)$pdo->lastInsertId();
 
                 // 4) ✅ ENVIA PARA NORMALIZER COM LOTE ID
                 $callbackUrl = "http://" . $_SERVER['HTTP_HOST'] . "/index.php?action=callbackNormalizacao";
 
                 $payload = [
-                    'nomeLote' => $model->nomeLote,
-                    'zipKey' => $zipKey,
+                    'tituloPacote' => $model->titulo,
+                    'chaveZip' => $chave_zip,
                     'bucket' => 'dadoscorretor',
                     'callbackUrl' => $callbackUrl,
-                    'loteIdNumerico' => $loteIdNumerico
+                    'idPacote' => $idPacote
                 ];
 
                 RabbitMQHelper::enviarParaFila('normalizacao_queue', $payload);
 
                 $this->redirecionaComFlash(
                     'success',
-                    "Lote '{$model->nomeLote}' (ID: {$loteIdNumerico}) enviado para normalização.",
+                    "Lote '{$model->titulo}' (ID: {$idPacote}) enviado para normalização.",
                     ['verFila']
                 );
             }
@@ -170,38 +166,39 @@ final class UploadFolhasRespostasController
 
         $data = json_decode($body, true);
 
-        if (!is_array($data) || empty($data['nomeLote']) || empty($data['event'])) {
+        if (!is_array($data) || empty($data['tituloPacote']) || empty($data['event'])) {
             http_response_code(400);
             error_log("Payload inválido: " . print_r($data, true));
             echo json_encode(['error' => 'Payload inválido']);
             exit; // ✅ exit
         }
 
-        $nomeLote = $data['nomeLote'];
+        $tituloPacote = $data['tituloPacote'];
+        $idPacote = $data['idPacote'];
         $event = $data['event'];
 
-        error_log("Processando evento: {$event} para lote: {$nomeLote}");
+        error_log("Processando evento: {$event} para lote: {$tituloPacote}");
 
         $pdo = $this->getDb();
 
         try {
             switch ($event) {
 
-                case 'started':
+                case 'iniciado':
                     $stmt = $pdo->prepare("
-                        UPDATE lotes_correcao
-                        SET status = 'normalizing', atualizado_em = NOW()
-                        WHERE nome = :nome
+                        UPDATE saeb_pacotes
+                        SET estado = 'normalizado'
+                        WHERE id = :id
                     ");
-                    $stmt->execute([':nome' => $nomeLote]);
+                    $stmt->execute([':id' => $idPacote]);
                     $affected = $stmt->rowCount(); // ✅ Verifica linhas afetadas
                     error_log("Event 'started' - Linhas afetadas: {$affected}");
                     break;
 
-                case 'finished':
+                case 'finalizado':
                     $normalizedPrefix = $data['normalizedPrefix'] ?? null;
                     $totalImagens = $data['totalImagens'] ?? 0;
-                    $loteIdNumerico = $data['loteIdNumerico'] ?? null;
+                    $idPacote = $data['idPacote'] ?? null;
 
                     if (!$normalizedPrefix) {
                         http_response_code(400);
@@ -210,7 +207,7 @@ final class UploadFolhasRespostasController
                         exit;
                     }
 
-                    if (!$loteIdNumerico) {
+                    if (!$idPacote) {
                         http_response_code(400);
                         error_log("loteIdNumerico ausente");
                         echo json_encode(['error' => 'loteIdNumerico obrigatório']);
@@ -218,16 +215,15 @@ final class UploadFolhasRespostasController
                     }
 
                     $stmt = $pdo->prepare("
-                        UPDATE lotes_correcao
-                        SET status = 'normalized',
-                            s3_prefix = :s3_prefix,
-                            total_arquivos = :total_arquivos,
-                            atualizado_em = NOW()
-                        WHERE nome = :nome
+                        UPDATE saeb_pacotes
+                        SET estado = 'normalizado',
+                            chave_s3 = :chave_s3,
+                            total_arquivos = :total_arquivos
+                        WHERE id = :id
                     ");
                     $stmt->execute([
-                        ':nome' => $nomeLote,
-                        ':s3_prefix' => $normalizedPrefix,
+                        ':id' => $idPacote,
+                        ':chave_s3' => $normalizedPrefix,
                         ':total_arquivos' => $totalImagens
                     ]);
                     $affected = $stmt->rowCount();
@@ -237,26 +233,23 @@ final class UploadFolhasRespostasController
                     $inputPath = "s3://{$bucket}/{$normalizedPrefix}";
 
                     $payloadJava = [
-                        'inputPath' => $inputPath,
-                        'nomeLote' => $nomeLote,
-                        'loteIdNumerico' => (int)$loteIdNumerico,
+                        'chaveImagens' => $inputPath,
+                        'tituloPacote' => $tituloPacote,
+                        'idPacote' => (int)$idPacote,
                         'callbackUrl' => "http://" . $_SERVER['HTTP_HOST'] . "/index.php?action=callbackProcessamento",
-                        'batchSize' => 100,
-                        'numThreads' => 8,
-                        'total' => $totalImagens
                     ];
 
                     try {
                         RabbitMQHelper::enviarParaFila('respostas_queue', $payloadJava);
 
                         $stmtFila = $pdo->prepare("
-                            UPDATE lotes_correcao 
-                            SET status = 'em_processamento', atualizado_em = NOW()
+                            UPDATE saeb_pacotes 
+                            SET estado = 'em_processamento'
                             WHERE id = :id
                         ");
-                        $stmtFila->execute([':id' => $loteIdNumerico]);
+                        $stmtFila->execute([':id' => $idPacote]);
 
-                        error_log("✅ Enviado para Java automaticamente - Lote ID: {$loteIdNumerico}");
+                        error_log("✅ Enviado para Java automaticamente - Lote ID: {$idPacote}");
 
                     } catch (Throwable $e) {
                         error_log("❌ Falha RabbitMQ para Java: " . $e->getMessage());
@@ -266,14 +259,14 @@ final class UploadFolhasRespostasController
                 case 'error':
                     $errorMessage = $data['errorMessage'] ?? 'Erro na normalização';
                     $stmt = $pdo->prepare("
-                    UPDATE lotes_correcao
-                    SET status = 'error_normalization',
+                    UPDATE saeb_pacotes
+                    SET estado = 'erro_normalizacao',
                         mensagem_erro = :msg,
                         atualizado_em = NOW()
-                    WHERE nome = :nome
+                    WHERE titulo = :nome
                     ");
                     $stmt->execute([
-                        ':nome' => $nomeLote,
+                        ':titulo' => $tituloPacote,
                         ':msg' => $errorMessage,
                     ]);
                     $affected = $stmt->rowCount();
@@ -288,7 +281,7 @@ final class UploadFolhasRespostasController
             }
 
             http_response_code(200);
-            echo json_encode(['status' => 'OK', 'event' => $event, 'nomeLote' => $nomeLote]);
+            echo json_encode(['estado' => 'OK', 'event' => $event, 'tituloPacote' => $tituloPacote]);
             error_log("Callback processado com sucesso");
             exit;
 
@@ -307,98 +300,160 @@ final class UploadFolhasRespostasController
         $db = $this->getDb();
 
         $stmt = $db->query("
-            SELECT l.id, l.nome, l.descricao, l.s3_prefix, l.total_arquivos, l.status,
-                   l.mensagem_erro, l.criado_em, l.atualizado_em, l.tempo_processamento_segundos,
-                   r.corrigidas, r.defeituosas, r.repetidas, r.total AS total_paginas
-            FROM lotes_correcao l
-            LEFT JOIN resumo_lote r ON r.lote_id = l.id  
-            ORDER BY l.criado_em DESC
-        ");
+        SELECT 
+            p.id,
+            p.titulo,
+            p.chave_s3,
+            p.total_arquivos,
+            p.estado,
+            p.criado_por,
+            p.criado_em,
+            -- resumo a partir de imagens_processadas
+            COALESCE(r.corrigidas, 0) AS corrigidas,
+            COALESCE(r.defeituosas, 0) AS defeituosas,
+            COALESCE(r.total, 0) AS total_paginas
+        FROM saeb_pacotes p
+        LEFT JOIN (
+            SELECT 
+                pacote_id,
+                COUNT(CASE WHEN estado = 'Ok' THEN 1 END) AS corrigidas,
+                COUNT(CASE WHEN estado = 'erro' THEN 1 END) AS defeituosas,
+                COUNT(*) AS total
+            FROM saeb_imagens_processadas
+            GROUP BY pacote_id
+        ) r ON r.pacote_id = p.id
+        ORDER BY p.criado_em DESC
+    ");
 
-        $lotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $pacotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $this->submenuAtivo = 'folhasResps';
         $this->pgTitulo = 'Fila de Análise :: Análise Automática';
-        $this->pgSubtitulo = 'Permite acompanhar o processamento dos lotes';
+        $this->pgSubtitulo = 'Permite acompanhar o processamento dos pacotes';
 
-        $this->render('verFila', compact('lotes'));
+        $this->render('verFila', ['pacotes' => $pacotes]);
     }
 
     public function actionDetalhar(): void
     {
-        $nomeLote = $_GET['nome'] ?? null;  // ✅ nome ao invés de lote_id
-        if (!$nomeLote) {
-            $this->redirecionaComFlash('negative', 'Lote inválido');
+        $nomePacote = $_GET['titulo'] ?? null;
+        if (!$nomePacote) {
+            $this->redirecionaComFlash('negative', 'Pacote inválido');
             return;
         }
 
         $db = $this->getDb();
 
-        // 1. Buscar lote por NOME
+        // 1. Buscar pacote por título (nome)
         $stmt = $db->prepare("
-            SELECT id, nome, descricao, s3_prefix, total_arquivos, status,
-                   mensagem_erro, criado_em, atualizado_em, tempo_processamento_segundos
-            FROM lotes_correcao
-            WHERE nome = :nomeLote
-        ");
-        $stmt->execute([':nomeLote' => $nomeLote]);
+        SELECT id, titulo, chave_s3, total_arquivos, estado,
+               criado_por, criado_em
+        FROM pacotes
+        WHERE titulo = :nomePacote
+    ");
+        $stmt->execute([':nomePacote' => $nomePacote]);
         $pacote = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$pacote) {
-            $this->redirecionaComFlash('negative', 'Lote não encontrado');
+            $this->redirecionaComFlash('negative', 'Pacote não encontrado');
             return;
         }
 
-        $loteIdNumerico = $pacote['id'];  // ✅ ID para tabelas filhas
-        $tempoSegundos = $pacote['tempo_processamento_segundos'];
+        $pacoteId = $pacote['id'];
 
-        // 2. Buscar resumo (usa ID numérico)
+        // 2. Resumo de imagens processadas (Ok vs erro)
         $stmt = $db->prepare("
-            SELECT corrigidas, defeituosas, repetidas, total
-            FROM resumo_lote
-            WHERE lote_id = :loteId
-        ");
-        $stmt->execute([':loteId' => $loteIdNumerico]);
+        SELECT 
+            COUNT(CASE WHEN estado = 'Ok' THEN 1 END) AS corrigidas,
+            COUNT(CASE WHEN estado = 'erro' THEN 1 END) AS defeituosas,
+            COUNT(*) AS total
+        FROM imagens_processadas
+        WHERE pacote_id = :pacoteId
+    ");
+        $stmt->execute([':pacoteId' => $pacoteId]);
         $resumo = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // 3. Folhas com problema (usa ID numérico)
+        // 3. Imagens com problema (estado = erro)
         $stmt = $db->prepare("
-            SELECT mensagem, tipo_folha, pagina, atualizado_em, status, caminho_folha, caderno_hash
-            FROM paginas_lote
-            WHERE lote_id = :loteId AND status IN ('defeituosa', 'repetida')
-            ORDER BY pagina ASC
-        ");
-        $stmt->execute([':loteId' => $loteIdNumerico]);
-        $folhasProblema = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        SELECT 
+            ip.chave_s3,
+            ip.mensagem,
+            ip.estado,
+            ip.criado_em,
+            il.pagina,
+            q.codigo_identificacao AS questionario_codigo
+        FROM imagens_processadas ip
+        LEFT JOIN imagens_lidas il ON il.chave_s3 = ip.chave_s3 AND il.pacote_id = ip.pacote_id
+        LEFT JOIN questionarios q ON q.id = il.questionario_id
+        WHERE ip.pacote_id = :pacoteId 
+          AND ip.estado = 'erro'
+        ORDER BY il.pagina ASC
+    ");
+        $stmt->execute([':pacoteId' => $pacoteId]);
+        $imagensProblema = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // 4. Todas as páginas
+        // 4. Todas as imagens lidas do pacote
         $stmt = $db->prepare("
-            SELECT mensagem, lote_id, caderno_hash, tipo_folha, pagina, atualizado_em
-            FROM paginas_lote
-            WHERE lote_id = :loteId
-            ORDER BY pagina ASC
-        ");
-        $stmt->execute([':loteId' => $loteIdNumerico]);
-        $paginas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        SELECT 
+            il.chave_s3,
+            il.pagina,
+            il.criado_em,
+            q.codigo_identificacao AS questionario_codigo,
+            ip.estado,
+            ip.mensagem
+        FROM imagens_lidas il
+        LEFT JOIN questionarios q ON q.id = il.questionario_id
+        LEFT JOIN imagens_processadas ip ON ip.chave_s3 = il.chave_s3 AND ip.pacote_id = il.pacote_id
+        WHERE il.pacote_id = :pacoteId
+        ORDER BY il.pagina ASC
+    ");
+        $stmt->execute([':pacoteId' => $pacoteId]);
+        $imagens = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // 5. Cadernos incompletos
+        // 5. Questionários incompletos ou parcialmente lidos
         $stmt = $db->prepare("
-            SELECT DISTINCT 
-                c.hash_caderno, 
-                c.numero_paginas_processadas AS total_paginas, 
-                c.status
-            FROM cadernos_lote c
-            INNER JOIN paginas_lote p ON p.caderno_hash = c.hash_caderno
-            WHERE p.lote_id = :loteId 
-              AND c.status = 'incompleto'
-        ");
-        $stmt->execute([':loteId' => $loteIdNumerico]);
-        $cadernosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        SELECT 
+            q.codigo_identificacao,
+            q.estado,
+            COUNT(il.id) AS total_imagens
+        FROM questionarios q
+        INNER JOIN imagens_lidas il ON il.questionario_id = q.id
+        WHERE il.pacote_id = :pacoteId
+          AND q.estado IN ('lido_parcialmente', 'criado')
+        GROUP BY q.id, q.codigo_identificacao, q.estado
+    ");
+        $stmt->execute([':pacoteId' => $pacoteId]);
+        $questionariosIncompletos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $this->pgTitulo = 'Lote ' . $pacote['nome'] . ' :: Detalhes';
-        $this->render('detalhar', compact('pacote', 'resumo', 'folhasProblema', 'paginas', 'cadernosIncompletos', 'tempoSegundos'));
+        // 6. Questionários completos (opcional, para estatísticas)
+        $stmt = $db->prepare("
+        SELECT COUNT(*) AS total_completos
+        FROM questionarios q
+        INNER JOIN imagens_lidas il ON il.questionario_id = q.id
+        WHERE il.pacote_id = :pacoteId
+          AND q.estado = 'lido_completamente'
+    ");
+        $stmt->execute([':pacoteId' => $pacoteId]);
+        $totalCompletos = $stmt->fetchColumn();
 
+        // 7. Tempo de processamento (se você mantiver essa info em algum campo ou calcular a partir de criado_em)
+        // Como não temos mais tempo_processamento_segundos em pacotes, você pode:
+        // - Adicionar esse campo em pacotes se quiser
+        // - Ou calcular a diferença entre a primeira e última imagem processada
+        $tempoSegundos = null; // ou calcule conforme sua necessidade
+
+        $this->pgTitulo = 'Pacote ' . $pacote['titulo'] . ' :: Detalhes';
+        $this->render('detalhar', compact(
+            'pacote',
+            'resumo',
+            'imagensProblema',
+            'imagens',
+            'questionariosIncompletos',
+            'totalCompletos',
+            'tempoSegundos'
+        ));
     }
+
 
     public function actionMeusEnvios(): void
     {
@@ -408,13 +463,13 @@ final class UploadFolhasRespostasController
         $db = $this->getDb();
 
         $stmt = $db->query("
-            SELECT id, nome, status, criado_em, atualizado_em, mensagem_erro, tempo_processamento_segundos
-            FROM lotes_correcao
+            SELECT id, titulo, estado, criado_em, total_arquivos
+            FROM saeb_pacotes
             ORDER BY criado_em DESC
         ");
 
-        $lotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $this->render('meusEnvios', compact('lotes'));
+        $pacotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $this->render('meusEnvios', compact('pacotes'));
     }
 
     public function actionMeusCadernos(): void
@@ -637,11 +692,9 @@ final class UploadFolhasRespostasController
     {
         error_log("🎯 CALLBACK INICIADO - PID: " . getmypid());
         error_log("🎯 URI: " . $_SERVER['REQUEST_URI']);
-        error_log("🎯 BODY: " . file_get_contents('php://input'));
 
-        error_log("📥 Callback PROCESSAMENTO recebido em " . date('Y-m-d H:i:s'));
         $body = file_get_contents('php://input');
-        error_log("📦 Body recebido: " . substr($body, 0, 500));
+        error_log("📦 Body recebido: " . substr($body, 0, 2000));
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             http_response_code(405);
@@ -652,199 +705,242 @@ final class UploadFolhasRespostasController
 
         $data = json_decode($body, true);
 
-        if (!is_array($data) || empty($data['loteIdNumerico'])) {
+        if (!is_array($data)) {
             http_response_code(400);
-            error_log("❌ Payload inválido: " . print_r($data, true));
-            echo json_encode(['error' => 'Payload inválido - loteIdNumerico obrigatório']);
+            error_log("❌ Payload inválido: JSON malformado");
+            echo json_encode(['error' => 'Payload inválido']);
             exit;
         }
 
         $event = $data['event'] ?? null;
-        $loteId = $data['loteIdNumerico'];
-        $paginas = $data['paginas'] ?? [];
-        $cCompletos = $data['cadernosCompletos'] ?? [];
-        $cIncompletos = $data['cadernosIncompletos'] ?? [];
-        $processingTime = $data['processingTimeSeconds'] ?? null;  // ✅ já vem no payload
 
-        error_log("✅ PROCESSAMENTO | loteId=$loteId | Event=$event | Páginas=" . count($paginas) . " | Completos=" . count($cCompletos) . " | Incompletos=" . count($cIncompletos));
+        // ✅ Detecta formato: simples ou completo
+        $isFormatoSimples = isset($data['idPacote']) && !isset($data['pacote']);
+
+        if ($isFormatoSimples) {
+            $pacoteId = (int)$data['idPacote'];
+            error_log("📌 Formato SIMPLES detectado | pacoteId=$pacoteId | event=$event");
+
+            $this->processarCallbackSimples($pacoteId, $event);
+            exit;
+        }
+
+        // Formato completo
+        $pacoteData              = $data['pacote'] ?? null;
+        $questionarios           = $data['questionarios'] ?? [];
+        $imagensLidas            = $data['imagensLidas'] ?? [];
+        $imagensProcessadas      = $data['imagensProcessadas'] ?? [];
+        $respostasLidas          = $data['respostasLidas'] ?? [];
+        $questionariosIncompletos = $data['questionariosIncompletos'] ?? [];
+        $tempoProcessamento      = $data['tempoProcessamento'] ?? null;
+        $chunkIndex              = $data['chunkIndex'] ?? null;
+
+        if (!$pacoteData || empty($pacoteData['idPacote'])) {
+            http_response_code(400);
+            error_log("❌ Payload completo sem pacote.idPacote");
+            echo json_encode(['error' => 'Payload inválido - pacote.idPacote obrigatório']);
+            exit;
+        }
+
+        $pacoteId = (int)$pacoteData['idPacote'];
+
+        error_log(sprintf(
+            "✅ CALLBACK COMPLETO | pacoteId=%d | Event=%s | Chunk=%s | Q=%d | ImgLidas=%d | ImgProc=%d | Resp=%d",
+            $pacoteId,
+            $event,
+            var_export($chunkIndex, true),
+            count($questionarios),
+            count($imagensLidas),
+            count($imagensProcessadas),
+            count($respostasLidas)
+        ));
 
         $pdo = $this->getDb();
         $pdo->beginTransaction();
 
         try {
-            // ✅ 2) SEMPRE salva CADERNOS COMPLETOS
-            if (!empty($cCompletos)) {
-                error_log("📚 Inserindo " . count($cCompletos) . " cadernos completos...");
-                $sqlCaderno = "
-                INSERT INTO cadernos_lote (hash_caderno, qr_texto_completo, numero_paginas_processadas, status)
-                VALUES (:hash, :qrTexto, :numPags, :status)
-                ON DUPLICATE KEY UPDATE
-                    qr_texto_completo        = VALUES(qr_texto_completo),
-                    numero_paginas_processadas = VALUES(numero_paginas_processadas),
-                    status                   = VALUES(status),
-                    updated_at               = CURRENT_TIMESTAMP
-            ";
-                $stmtCad = $pdo->prepare($sqlCaderno);
-
-                foreach ($cCompletos as $c) {
-                    $stmtCad->execute([
-                        ':hash'    => $c['hashCaderno'],
-                        ':qrTexto' => $c['qrTextoCompleto'] ?? null,
-                        ':numPags' => (int)($c['numeroPaginasProcessadas'] ?? 0),
-                        ':status'  => $c['status'] ?? 'completo',
-                    ]);
-
-                    if (!empty($c['respostas']) && is_array($c['respostas'])) {
-                        RespostasCadernoHelper::salvar($pdo, $c['hashCaderno'], $c['respostas']);
-                        error_log("✅ Respostas salvas para caderno: " . $c['hashCaderno']);
-                    }
-                }
-                error_log("✅ Cadernos completos salvos: " . count($cCompletos));
-            }
-
-            // ✅ 3) SEMPRE salva CADERNOS INCOMPLETOS
-            if (!empty($cIncompletos)) {
-                error_log("📚 Inserindo " . count($cIncompletos) . " cadernos incompletos...");
-                $sqlCaderno = "
-                INSERT INTO cadernos_lote (hash_caderno, qr_texto_completo, numero_paginas_processadas, status)
-                VALUES (:hash, :qrTexto, :numPags, :status)
-                ON DUPLICATE KEY UPDATE
-                    qr_texto_completo        = VALUES(qr_texto_completo),
-                    numero_paginas_processadas = VALUES(numero_paginas_processadas),
-                    status                   = VALUES(status),
-                    updated_at               = CURRENT_TIMESTAMP
-            ";
-                $stmtCad = $pdo->prepare($sqlCaderno);
-
-                foreach ($cIncompletos as $c) {
-                    $stmtCad->execute([
-                        ':hash'    => $c['hashCaderno'],
-                        ':qrTexto' => $c['qrTextoCompleto'] ?? null,
-                        ':numPags' => (int)($c['numeroPaginasProcessadas'] ?? 0),
-                        ':status'  => $c['status'] ?? 'incompleto',
-                    ]);
-                }
-                error_log("✅ Cadernos incompletos salvos: " . count($cIncompletos));
-            }
-
-            // ✅ 1) SEMPRE salva PÁGINAS (chunks + finais)
-            if (!empty($paginas)) {
-                error_log("📄 Inserindo " . count($paginas) . " páginas em paginas_lote...");
-                $sqlPagina = "
-                INSERT INTO paginas_lote
-                    (caderno_hash, pagina, lote_id, tipo_folha, status, mensagem, caminho_folha, criado_em, atualizado_em)
-                VALUES
-                    (:hashCaderno, :pagina, :loteId, :tipoFolha, :status, :mensagem, :caminhoFolha, NOW(), NOW())
-                ON DUPLICATE KEY UPDATE
-                    lote_id       = VALUES(lote_id),
-                    tipo_folha    = VALUES(tipo_folha),
-                    status        = VALUES(status),
-                    mensagem      = VALUES(mensagem),
-                    caminho_folha = VALUES(caminho_folha),
-                    atualizado_em = NOW()
-            ";
-                $stmtPag = $pdo->prepare($sqlPagina);
-
-                foreach ($paginas as $p) {
-                    $stmtPag->execute([
-                        ':hashCaderno' => $p['hashCaderno'] ?? null,
-                        ':pagina'      => (int)($p['pagina'] ?? 0),
-                        ':loteId'      => $loteId,
-                        ':tipoFolha'   => $p['tipoFolha'] ?? 'Resposta',
-                        ':status'      => $p['status'] ?? 'defeituosa',
-                        ':mensagem'    => $p['mensagem'] ?? null,
-                        ':caminhoFolha'=> $p['caminhoFolha'] ?? null,
-                    ]);
-                }
-                error_log("✅ Páginas salvas: " . count($paginas));
-            }
-
-            // ✅ 4) SEMPRE atualiza RESUMO_LOTE
-            error_log("📊 Atualizando resumo_lote...");
-            $sqlResumo = "
-            INSERT INTO resumo_lote (lote_id, corrigidas, defeituosas, repetidas, total, atualizado_em)
-            SELECT lote_id,
-                   SUM(CASE WHEN status='corrigida'  THEN 1 ELSE 0 END),
-                   SUM(CASE WHEN status='defeituosa' THEN 1 ELSE 0 END),
-                   SUM(CASE WHEN status='repetida'   THEN 1 ELSE 0 END),
-                   COUNT(*),
-                   NOW()
-            FROM paginas_lote
-            WHERE lote_id = :loteId
-            GROUP BY lote_id
+            // 1) PACOTE
+            error_log("📦 Salvando/atualizando pacote id=$pacoteId...");
+            $sqlPacote = "
+            INSERT INTO saeb_pacotes (id, titulo, chave_s3, total_arquivos, estado, criado_por, criado_em)
+            VALUES (:id, :titulo, :chaveS3, :totalArquivos, :estado, :criadoPor, NOW())
             ON DUPLICATE KEY UPDATE
-                corrigidas   = VALUES(corrigidas),
-                defeituosas  = VALUES(defeituosas),
-                repetidas    = VALUES(repetidas),
-                total        = VALUES(total),
-                atualizado_em= VALUES(atualizado_em)
+                estado = VALUES(estado),
+                total_arquivos = COALESCE(VALUES(total_arquivos), total_arquivos)
         ";
-            $stmtResumo = $pdo->prepare($sqlResumo);
-            $stmtResumo->execute([':loteId' => $loteId]);
-            error_log("✅ Resumo_lote atualizado");
+            $stmtPacote = $pdo->prepare($sqlPacote);
+            $stmtPacote->execute([
+                ':id'            => $pacoteId,
+                ':titulo'        => $pacoteData['titulo'] ?? ('Pacote ' . $pacoteId),
+                ':chaveS3'       => $pacoteData['chaveS3'] ?? null,
+                ':totalArquivos' => $pacoteData['totalArquivos'] ?? null,
+                ':estado'        => $pacoteData['estado'] ?? 'em_processamento',
+                ':criadoPor'     => $pacoteData['criadoPor'] ?? 'User',
+            ]);
+            error_log("✅ Pacote salvo/atualizado");
+
+            // 3) IMAGENS LIDAS
+            if (!empty($imagensLidas)) {
+                error_log("🖼 Salvando " . count($imagensLidas) . " imagens lidas...");
+
+                $sqlImgLida = "
+                INSERT INTO saeb_imagens_lidas (chave_s3, pacote_id, pagina, questionario_id, criado_em)
+                VALUES (
+                    :chaveS3,
+                    :pacoteId,
+                    :pagina,
+                    (SELECT id FROM saeb_questionarios WHERE codigo_identificacao = :questionarioCodigo LIMIT 1),
+                    NOW()
+                )
+                ON DUPLICATE KEY UPDATE
+                    pagina         = VALUES(pagina),
+                    questionario_id = VALUES(questionario_id)
+            ";
+                $stmtImgLida = $pdo->prepare($sqlImgLida);
+
+                // log e detecção de hashes inexistentes
+                $hashesImgInexistentes = [];
+
+                foreach ($imagensLidas as $img) {
+                    $codigo = $img['questionarioId'] ?? null;
+
+                    if (!$codigo) {
+                        error_log("⚠️ Imagem sem questionarioId, pulando: " . json_encode($img));
+                        continue;
+                    }
+
+                    // testa se existe questionário para esse hash
+                    $stmtCheck = $pdo->prepare("SELECT id FROM saeb_questionarios WHERE codigo_identificacao = :codigo LIMIT 1");
+                    $stmtCheck->execute([':codigo' => $codigo]);
+                    $idQuest = $stmtCheck->fetchColumn();
+
+                    if (!$idQuest) {
+                        $hashesImgInexistentes[$codigo] = true;
+                        error_log("⚠️ Nenhum saeb_questionarios para hash=$codigo; NÃO inserindo imagem_lida para essa linha");
+                        continue; // evita tentar inserir questionario_id NULL
+                    }
+
+                    // se existe, insere normalmente
+                    $stmtImgLida->execute([
+                        ':chaveS3'            => $img['chaveS3'],
+                        ':pacoteId'           => $pacoteId,
+                        ':pagina'             => (int)($img['pagina'] ?? 0),
+                        ':questionarioCodigo' => $codigo,
+                    ]);
+                }
+
+                if (!empty($hashesImgInexistentes)) {
+                    error_log("⚠️ Resumo: hashes de questionário em imagens_lidas que NÃO existem em saeb_questionarios: " . implode(', ', array_keys($hashesImgInexistentes)));
+                }
+
+                error_log("✅ Imagens lidas processadas (algumas podem ter sido puladas por hash inexistente)");
+            }
+
+            // 4) IMAGENS PROCESSADAS
+            if (!empty($imagensProcessadas)) {
+                error_log("🖼 Salvando " . count($imagensProcessadas) . " imagens processadas...");
+                $sqlImgProc = "
+                INSERT INTO saeb_imagens_processadas (chave_s3, pacote_id, job_id, estado, mensagem, criado_em)
+                VALUES (:chaveS3, :pacoteId, :jobId, :estado, :mensagem, NOW())
+                ON DUPLICATE KEY UPDATE
+                    estado   = VALUES(estado),
+                    mensagem = VALUES(mensagem)
+            ";
+                $stmtImgProc = $pdo->prepare($sqlImgProc);
+
+                foreach ($imagensProcessadas as $img) {
+                    $stmtImgProc->execute([
+                        ':chaveS3'  => $img['chaveS3'],
+                        ':pacoteId' => $pacoteId,
+                        ':jobId'    => $img['jobId'] ?? null,
+                        ':estado'   => $img['estado'] ?? 'Ok',
+                        ':mensagem' => $img['mensagem'] ?? null,
+                    ]);
+                }
+                error_log("✅ Imagens processadas salvas: " . count($imagensProcessadas));
+            }
+
+            // 5) RESPOSTAS LIDAS
+            if (!empty($respostasLidas)) {
+                error_log("📝 Salvando " . count($respostasLidas) . " respostas lidas...");
+
+                $mapCodigoParaId = [];
+                $sqlGetQuestId = "SELECT id FROM saeb_questionarios WHERE codigo_identificacao = :codigo LIMIT 1";
+                $stmtGetQuestId = $pdo->prepare($sqlGetQuestId);
+
+                $sqlRespLida = "
+                INSERT INTO saeb_respostas_lidas (questionario_id, codigo_questao, codigo_resposta, criado_em)
+                VALUES (:questionarioId, :codigoQuestao, :codigoResposta, NOW())
+                ON DUPLICATE KEY UPDATE
+                    codigo_resposta = VALUES(codigo_resposta)
+            ";
+                $stmtRespLida = $pdo->prepare($sqlRespLida);
+
+                $hashesRespInexistentes = [];
+
+                foreach ($respostasLidas as $resp) {
+                    $codigoQuestionario = $resp['questionarioCodigo'] ?? null;
+                    if (!$codigoQuestionario) {
+                        error_log("⚠️ Resposta sem questionarioCodigo, ignorando: " . json_encode($resp));
+                        continue;
+                    }
+
+                    if (!isset($mapCodigoParaId[$codigoQuestionario])) {
+                        $stmtGetQuestId->execute([':codigo' => $codigoQuestionario]);
+                        $idQuestionario = $stmtGetQuestId->fetchColumn();
+                        if (!$idQuestionario) {
+                            $hashesRespInexistentes[$codigoQuestionario] = true;
+                            error_log("⚠️ Questionário não encontrado para codigo_identificacao=$codigoQuestionario, ignorando respostas");
+                            continue;
+                        }
+                        $mapCodigoParaId[$codigoQuestionario] = (int)$idQuestionario;
+                    }
+
+                    $stmtRespLida->execute([
+                        ':questionarioId' => $mapCodigoParaId[$codigoQuestionario],
+                        ':codigoQuestao'  => $resp['codigoQuestao'],
+                        ':codigoResposta' => $resp['codigoResposta'],
+                    ]);
+                }
+
+                if (!empty($hashesRespInexistentes)) {
+                    error_log("⚠️ Resumo: hashes em respostas_lidas que NÃO existem em saeb_questionarios: " . implode(', ', array_keys($hashesRespInexistentes)));
+                }
+
+                error_log("✅ Respostas lidas salvas (com possíveis respostas ignoradas por hash inexistente)");
+            }
 
             $pdo->commit();
-            error_log("✅ ✅ ✅ TODAS as tabelas salvas com sucesso! (Páginas: " . count($paginas) . " | Completos: " . count($cCompletos) . " | Incompletos: " . count($cIncompletos) . ")");
+            error_log("✅ ✅ ✅ Transação concluída com sucesso!");
 
-            if ($event) {
-                switch ($event) {
-                    case 'processing_started':
-                        $stmt = $pdo->prepare("
-                        UPDATE lotes_correcao 
-                        SET status = 'em_processamento', atualizado_em = NOW()
-                        WHERE id = :id
-                    ");
-                        $stmt->execute([':id' => $loteId]);
-                        error_log("✅ lotes_correcao → em_processamento");
-                        break;
-
-                    case 'finished':
-                        error_log("🔍 EXECUTANDO UPDATE finished para loteId=$loteId");
-
-                        $stmt = $pdo->prepare("
-                            UPDATE lotes_correcao 
-                            SET status = 'finished', atualizado_em = NOW(), tempo_processamento_segundos = :tempo
-                            WHERE id = :id
-                        ");
-
-                        $stmt->execute([':id' => $loteId, ':tempo' => (int)$processingTime,]);
-                        $rows = $stmt->rowCount();
-
-                        error_log("✅ UPDATE finished | loteId=$loteId | Linhas afetadas: $rows");
-
-                        // ✅ VERIFICA se funcionou
-                        $check = $pdo->query("SELECT status FROM lotes_correcao WHERE id = $loteId")->fetchColumn();
-                        error_log("🔍 STATUS FINAL no banco: $check");
-                        break;
-
-                    case 'chunk_processed':
-                        error_log("✅ Chunk processado: " . count($cCompletos) . " cadernos completos salvos");
-                        break;
-
-                    default:
-                        error_log("⚠️ Event desconhecido: $event (mas dados foram salvos)");
-                }
+            if ($event === 'finished') {
+                error_log("🏁 Evento finished para pacoteId=$pacoteId");
+                $stmtFinal = $pdo->prepare("UPDATE saeb_pacotes SET estado = 'processado' WHERE id = :id");
+                $stmtFinal->execute([':id' => $pacoteId]);
+                error_log("✅ Pacote marcado como processado");
             }
 
             http_response_code(200);
             echo json_encode([
-                'status' => 'OK',
-                'event' => $event,
-                'loteId' => $loteId,
-                'salvos' => [
-                    'paginas' => count($paginas),
-                    'cadernosCompletos' => count($cCompletos),
-                    'cadernosIncompletos' => count($cIncompletos)
+                'status'    => 'OK',
+                'event'     => $event,
+                'pacoteId'  => $pacoteId,
+                'salvos'    => [
+                    'questionarios'      => count($questionarios),
+                    'imagensLidas'       => count($imagensLidas),
+                    'imagensProcessadas' => count($imagensProcessadas),
+                    'respostasLidas'     => count($respostasLidas),
                 ]
             ]);
-            error_log("✅ Callback PROCESSAMENTO concluído com sucesso");
             exit;
 
-        } catch (Throwable $e) {
+        } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             error_log("❌ ERRO FATAL no callbackProcessamento: " . $e->getMessage());
+            error_log("❌ Tipo do erro: " . get_class($e));
+            error_log("❌ Arquivo/Linha: " . $e->getFile() . ':' . $e->getLine());
             error_log("Stack trace: " . $e->getTraceAsString());
 
             http_response_code(500);
@@ -852,4 +948,42 @@ final class UploadFolhasRespostasController
             exit;
         }
     }
+
+    /**
+     * Processa callbacks simples (só idPacote + event)
+     */
+    private function processarCallbackSimples(int $pacoteId, ?string $event): void
+    {
+        $pdo = $this->getDb();
+
+        try {
+            if ($event === 'processing_started') {
+                $stmt = $pdo->prepare("
+                INSERT INTO saeb_pacotes (id, titulo, estado, criado_em)
+                VALUES (:id, :titulo, 'em_processamento', NOW())
+                ON DUPLICATE KEY UPDATE estado = 'em_processamento'
+            ");
+                $stmt->execute([
+                    ':id' => $pacoteId,
+                    ':titulo' => 'Pacote ' . $pacoteId
+                ]);
+                error_log("✅ Pacote $pacoteId → em_processamento");
+            }
+
+            http_response_code(200);
+            echo json_encode([
+                'status' => 'OK',
+                'event' => $event,
+                'pacoteId' => $pacoteId
+            ]);
+            error_log("✅ Callback simples processado");
+
+        } catch (\Throwable $e) {
+            error_log("❌ Erro no callback simples: " . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+
 }

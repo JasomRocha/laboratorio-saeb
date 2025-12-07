@@ -1,6 +1,6 @@
 <?php
 /* @var $controller UploadFolhasRespostasController */
-/* @var $lotes array */
+/* @var $pacotes array */
 
 use controllers\UploadFolhasRespostasController;
 
@@ -46,7 +46,7 @@ use controllers\UploadFolhasRespostasController;
         <h1 class="ui dividing header">
             <div class="content">
                 <?= htmlspecialchars($controller->pgTitulo) ?>
-                <div class="sub header">Listagem dos lotes enviados para análise</div>
+                <div class="sub header">Listagem dos pacotes enviados para análise</div>
             </div>
         </h1>
 
@@ -61,53 +61,49 @@ use controllers\UploadFolhasRespostasController;
                 <div class="ui segment">
                     <h3 class="ui header">
                         <i class="folder open icon"></i>
-                        <div class="content">Lotes enviados</div>
+                        <div class="content">pacotes enviados</div>
                     </h3>
 
                     <table class="ui celled table">
                         <thead>
                         <tr>
-                            <th>Nome do Lote</th>
-                            <th>Status</th>
+                            <th>Título do Pacote</th>
+                            <th>Estado</th>
                             <th>Criado em</th>
-                            <th>Atualizado em</th>
                             <th>Ações</th>
                         </tr>
                         </thead>
                         <tbody>
-                        <?php if ($lotes): ?>
-                            <?php foreach ($lotes as $lote): ?>
+                        <?php if ($pacotes): ?>
+                            <?php foreach ($pacotes as $pacote): ?>
                                 <tr>
-                                    <td><?= htmlspecialchars($lote['nome']) ?></td>  <!-- ✅ nome -->
+                                    <td><?= htmlspecialchars($pacote['titulo']) ?></td>  <!-- ✅ nome -->
                                     <td>
                                         <?php
-                                        if ($lote['status'] === 'concluido') {
+                                        if ($pacote['estado'] === 'processado') {
                                             $statusClass = 'green';
-                                        } elseif ($lote['status'] === 'em_processamento') {
+                                        } elseif ($pacote['estado'] === 'em_processamento') {
                                             $statusClass = 'blue';
-                                        } elseif ($lote['status'] === 'erro') {
+                                        } elseif ($pacote['estado'] === 'erro_normalizacao' || $pacote['estado'] === 'erro_processamento') {
                                             $statusClass = 'red';
                                         } else {
                                             $statusClass = 'grey';
                                         }
                                         ?>
                                         <span class="ui <?= $statusClass ?> label">
-                                            <?= htmlspecialchars($lote['status']) ?>
+                                            <?= htmlspecialchars($pacote['estado']) ?>
                                         </span>
                                     </td>
-                                    <td><?= date('d/m/Y H:i:s', strtotime($lote['criado_em'])) ?></td>
+                                    <td><?= date('d/m/Y H:i:s', strtotime($pacote['criado_em'])) ?></td>
                                     <td>
-                                        <?= $lote['atualizado_em'] ? date('d/m/Y H:i:s', strtotime($lote['atualizado_em'])) : '-' ?>
-                                    </td>
-                                    <td>
-                                        <a class="ui mini primary button" href="index.php?action=meusCadernos&lote_nome=<?= urlencode($lote['nome']) ?>">  <!-- ✅ lote_nome -->
+                                        <a class="ui mini primary button" href="index.php?action=meusCadernos&lote_nome=<?= urlencode($pacote['titulo']) ?>">  <!-- ✅ lote_nome -->
                                             <i class="book icon"></i> Cadernos
                                         </a>
-                                        <a class="ui mini basic button" href="index.php?action=downloadLote&lote_nome=<?= urlencode($lote['nome']) ?>">  <!-- ✅ lote_nome -->
+                                        <a class="ui mini basic button" href="index.php?action=downloadLote&lote_nome=<?= urlencode($pacote['titulo']) ?>">  <!-- ✅ lote_nome -->
                                             <i class="download icon"></i> Baixar lote
                                         </a>
-                                        <?php if ($lote['status'] === 'concluido' || $lote['status'] === 'erro'): ?>
-                                            <a class="ui mini icon button" href="index.php?action=detalhar&lote_nome=<?= urlencode($lote['nome']) ?>" title="Ver detalhes">  <!-- ✅ lote_nome -->
+                                        <?php if ($pacote['estado'] === 'processado' || $pacote['estado'] === 'erro'): ?>
+                                            <a class="ui mini icon button" href="index.php?action=detalhar&lote_nome=<?= urlencode($pacote['titulo']) ?>" title="Ver detalhes">  <!-- ✅ lote_nome -->
                                                 <i class="list icon"></i>
                                             </a>
                                         <?php endif; ?>

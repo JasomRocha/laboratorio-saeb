@@ -1,6 +1,6 @@
 <?php
 /* @var $controller UploadFolhasRespostasController */
-/* @var $lotes array */
+/* @var $pacotes array */
 
 use controllers\UploadFolhasRespostasController;
 
@@ -60,7 +60,7 @@ use controllers\UploadFolhasRespostasController;
             <div class="thirteen wide column">
                 <nav class="ui menu">
                     <div class="borderless item">
-                        <strong>(<?= count($lotes) ?> pacotes na listagem)</strong>
+                        <strong>(<?= count($pacotes) ?> pacotes na listagem)</strong>
                     </div>
                     <div class="right item">
                         <a class="ui primary right labeled icon basic button" href="index.php?action=upload">
@@ -77,9 +77,9 @@ use controllers\UploadFolhasRespostasController;
                     </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($lotes as $l): ?>
+                    <?php foreach ($pacotes as $p): ?>
                         <?php
-                        $status = $l['status'];
+                        $status = $p['estado'];
                         $rowClass = '';
                         $iconClass = '';
                         switch ($status) {
@@ -90,8 +90,8 @@ use controllers\UploadFolhasRespostasController;
                                 break;
 
                             case 'erro':
-                            case 'error_normalization':
-                            case 'error_processing':
+                            case 'erro_normalizacao':
+                            case 'erro_processamento':
                                 $rowClass  = 'negative';
                                 $iconClass = 'warning orange circular inverted icon';
                                 break;
@@ -101,8 +101,8 @@ use controllers\UploadFolhasRespostasController;
                                 $iconClass = 'sync blue icon circular inverted loading';
                                 break;
 
-                            case 'uploaded_bruto':
-                            case 'normalizing':
+                            case 'carregado':
+                            case 'normalizado':
                             case 'normalized':
                             default:
                                 $rowClass  = '';
@@ -111,51 +111,41 @@ use controllers\UploadFolhasRespostasController;
                         }
 
 
-                        $totalPaginas = $l['total_paginas'] !== null
-                                ? (int)$l['total_paginas']
-                                : (int)$l['total_arquivos'];
+                        $totalPaginas = $p['total_arquivos'];
 
-                        $corrigidas  = $l['corrigidas']  !== null ? (int)$l['corrigidas']  : 0;
-                        $defeituosas = $l['defeituosas'] !== null ? (int)$l['defeituosas'] : 0;
-                        $repetidas   = $l['repetidas']   !== null ? (int)$l['repetidas']   : 0;
+                        $corrigidas  = $p['corrigidas']  !== null ? (int)$p['corrigidas']  : 0;
+                        $defeituosas = $p['defeituosas'] !== null ? (int)$p['defeituosas'] : 0;
                         ?>
                         <tr class="<?= $rowClass ?>">
                             <td class="collapsing center aligned">
                                 <i class="<?= $iconClass ?>"></i>
                             </td>
                             <td>
-                                <?= htmlspecialchars($l['nome']) ?><br>
+                                <?= htmlspecialchars($p['titulo']) ?><br>
                                 <span class="muted">
-                                    Carregado em <?= date('d/m/Y \à\s H:i:s', strtotime($l['criado_em'])) ?>
+                                    Carregado em <?= date('d/m/Y \à\s H:i:s', strtotime($p['criado_em'])) ?>
                                 </span>
                             </td>
                             <td>
-                                <?php if ($status === 'concluido' || $status === 'finished'): ?>
+                                <?php if ($status === 'concluido' || $status === 'finalizado'): ?>
                                     <i class="check icon"></i>
-                                    Concluído em <?= date('d/m/Y \à\s H:i:s', strtotime($l['atualizado_em'])) ?><br>
+                                    Criado Por <?= htmlspecialchars($p['criado_por']) ?><br>
                                     <a class="ui green small label"><?= $corrigidas ?> corrigidas</a>
                                     <?php if ($defeituosas > 0): ?>
                                         <a class="ui red small label"><?= $defeituosas ?> defeituosas</a>
                                     <?php endif; ?>
-                                    <?php if ($repetidas > 0): ?>
-                                        <a class="ui black small label"><?= $repetidas ?> repetidas</a>
-                                    <?php endif; ?>
-
                                 <?php elseif (in_array($status, ['erro', 'error_normalization', 'error_processing'], true)): ?>
                                     <i class="warning icon"></i>
-                                    Erro em <?= date('d/m/Y \à\s H:i:s', strtotime($l['atualizado_em'])) ?><br>
+                                    Erro em <?= date('d/m/Y \à\s H:i:s', strtotime($p['criado_em'])) ?><br>
                                     <a class="ui red small label"><?= $totalPaginas ?> páginas com problema</a>
 
                                 <?php elseif ($status === 'em_processamento'): ?>
                                     <i class="sync loading icon"></i>Processando...
 
-                                <?php elseif ($status === 'uploaded_bruto'): ?>
+                                <?php elseif ($status === 'carregado'): ?>
                                     <i class="clock icon"></i>Aguardando normalização
 
-                                <?php elseif ($status === 'normalizing'): ?>
-                                    <i class="sync loading icon"></i>Normalizando imagens...
-
-                                <?php elseif ($status === 'normalized'): ?>
+                                <?php elseif ($status === 'normalizado'): ?>
                                     <i class="check icon"></i>Pronto para processamento
 
                                 <?php else: ?>
@@ -164,12 +154,16 @@ use controllers\UploadFolhasRespostasController;
 
                             </td>
                             <td class="center aligned single line collapsing">
+                                <?php if ($totalPaginas == 1): ?>
+                                <span class="muted"><?= $totalPaginas ?> arquivo enviado</span>
+                                <?php else: ?>
                                 <span class="muted"><?= $totalPaginas ?> páginas no arquivo</span>
+                                <?php endif; ?>
                             </td>
                             <td class="right aligned">
                                 <div class="ui small buttons">
                                     <?php if ($status === 'normalized' || $status === 'finished'): ?>
-                                        <a class="ui compact icon button" href="index.php?action=detalhar&nome=<?= urlencode($l['nome']) ?>">
+                                        <a class="ui compact icon button" href="index.php?action=detalhar&nome=<?= urlencode($p['titulo']) ?>">
                                             <i class="list icon"></i> Detalhar
                                         </a>
                                         <a class="ui icon compact grey button" title="Baixar cópia do arquivo" href="index.php?action=downloadLote&nome=<?= urlencode($l['nome']) ?>">

@@ -105,25 +105,18 @@ $maxUploadSize = ini_get('upload_max_filesize');
                             <?php endif; ?>
                         </div>
 
-                        <div class="<?= $model->hasErrors('nomeLote') ? 'error' : '' ?> field" id="nomeLoteWrapper">
-                            <label for="FormPacoteCorrecao_nomeLote">Nome do Lote</label>
+                        <div class="<?= $model->hasErrors('tituloPacote') ? 'error' : '' ?> field" id="nomeLoteWrapper">
+                            <label for="FormPacoteCorrecao_tituloPacote">Título do pacote</label>
                             <input type="text"
-                                   name="FormPacoteCorrecao[nomeLote]"
-                                   id="FormPacoteCorrecao_nomeLote"
-                                   placeholder="Digite um nome único para este lote (ex: lote-001)"
-                                   value="<?= htmlspecialchars($model->nomeLote ?? '') ?>"
+                                   name="FormPacoteCorrecao[tituloPacote]"
+                                   id="FormPacoteCorrecao_tituloPacote"
+                                   placeholder="Digite um título para este pacote"
+                                   value="<?= htmlspecialchars($model->titulo ?? '') ?>"
                                    maxlength="255"
                                    required>
                             <div class="muted"><small>Este nome será usado como identificador único no processamento.</small></div>
                         </div>
-
-                        <div class="<?= $model->hasErrors('descricao') ? 'error' : '' ?> field">
-                            <label for="FormPacoteCorrecao_descricao">Descrição do lote</label>
-                            <textarea name="FormPacoteCorrecao[descricao]" id="FormPacoteCorrecao_descricao" rows="3"><?= htmlspecialchars($model->descricao ?? '') ?></textarea>
-                        </div>
                     </div>
-
-                    <?php if (!$model->hasErrors()): ?>
                         <div class="ui warning small attached icon message">
                             <i class="file archive outline icon"></i>
                             <div class="content">
@@ -134,8 +127,6 @@ $maxUploadSize = ini_get('upload_max_filesize');
                                 </p>
                             </div>
                         </div>
-                    <?php endif; ?>
-
                     <div class="ui bottom attached segment right aligned">
                         <button type="submit" class="ui primary button">
                             <i class="upload icon"></i> Upload
@@ -190,14 +181,6 @@ $maxUploadSize = ini_get('upload_max_filesize');
         if (nome.length === 0) {
             wrapper.removeClass('error success');
             return;
-        }
-
-        // Regex: letras, números, hífen, underscore (sem espaços)
-        var regexValido = /^[a-zA-Z0-9_-]+$/;
-        if (regexValido.test(nome)) {
-            wrapper.removeClass('error').addClass('success');
-        } else {
-            wrapper.removeClass('success').addClass('error');
         }
     });
 </script>
